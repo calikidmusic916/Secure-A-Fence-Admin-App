@@ -7,8 +7,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    // Change this to your deployed backend URL or localhost / emulator IP (e.g. "http://10.0.2.2:3000/")
-    private const val BASE_URL = "https://secure-a-fence-admin.onrender.com/"
+    // Render deployment URL for backend server
+    private const val BASE_URL = "https://secure-a-fence-backend-server.onrender.com/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
