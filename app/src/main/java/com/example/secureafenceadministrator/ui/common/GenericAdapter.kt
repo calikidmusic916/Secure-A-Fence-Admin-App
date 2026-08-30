@@ -9,7 +9,8 @@ class GenericAdapter<T>(
     private val items: List<T>,
     private val titleProvider: (T) -> String,
     private val subtitleProvider: (T) -> String,
-    private val statusProvider: (T) -> String
+    private val statusProvider: (T) -> String,
+    private val onItemClick: ((T) -> Unit)? = null
 ) : RecyclerView.Adapter<GenericAdapter.ViewHolder>() {
 
     class ViewHolder(val binding: ItemGenericBinding) : RecyclerView.ViewHolder(binding.root)
@@ -24,6 +25,7 @@ class GenericAdapter<T>(
         holder.binding.tvTitle.text = titleProvider(item)
         holder.binding.tvSubtitle.text = subtitleProvider(item)
         holder.binding.tvStatus.text = statusProvider(item)
+        holder.itemView.setOnClickListener { onItemClick?.invoke(item) }
     }
 
     override fun getItemCount(): Int = items.size

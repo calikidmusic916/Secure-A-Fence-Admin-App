@@ -47,7 +47,8 @@ class RentalsFragment : Fragment() {
                         rentals,
                         titleProvider = { "Rental #${it.id} (${it.customerCompany})" },
                         subtitleProvider = { "Site: ${it.jobsiteAddress}\nEnd Date: ${it.endDate}" },
-                        statusProvider = { "Status: ${it.status}" }
+                        statusProvider = { "Status: ${it.status}" },
+                        onItemClick = { showExtendDialog(it) }
                     )
                     binding.recyclerViewRentals.adapter = adapter
                 } else if (response.code() == 401) {
@@ -55,6 +56,54 @@ class RentalsFragment : Fragment() {
                     com.example.secureafenceadministrator.data.network.SessionManager.clearSession(context)
                 } else {
                     Toast.makeText(context, "Failed to load rentals", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showExtendDialog(rental: com.example.secureafenceadministrator.data.model.Rental) {
+        val context = context ?: return
+        val builder = android.app.AlertDialog.Builder(context)
+        builder.setTitle("Extend Rental #${rental.id}")
+
+        val input = android.widget.EditText(context).apply {
+            hint = "New End Date (YYYY-MM-DD)"
+            setText(rental.endDate)
+            setPadding(32, 32, 32, 32)
+        }
+        builder.setView(input)
+
+        builder.setPositiveButton("Extend") { _, _ ->
+            val newDate = input.text.toString()
+            if (newDate.isNotEmpty()) {
+                extendRental(rental.id, newDate)
+            } else {
+                Toast.makeText(context, "Please enter a valid date", Toast.LENGTH_SHORT).show()
+            }
+        }
+        builder.setNegativeButton("Cancel", null)
+        builder.show()
+    }
+
+    private fun extendRental(rentalId: String, newEndDate: String) {
+        val context = context ?: return
+        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        if (token.isNullOrEmpty()) return
+
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.instance.extendRental(
+                    "Bearer $token",
+                    rentalId,
+                    com.example.secureafenceadministrator.data.model.ExtendRentalRequest(endDate = newEndDate)
+                )
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Rental extended successfully", Toast.LENGTH_SHORT).show()
+                    loadRentals()
+                } else {
+                    Toast.makeText(context, "Failed to extend rental", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()

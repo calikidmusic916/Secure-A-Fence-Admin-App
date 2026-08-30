@@ -43,4 +43,32 @@ interface AdminApiService {
         @Path("id") shipmentId: String,
         @Body request: ShipmentUpdateRequest
     ): Response<Map<String, Any>>
+
+    @POST("api/admin/sales")
+    suspend fun createOrder(
+        @Header("Authorization") token: String,
+        @Body request: Order
+    ): Response<Map<String, Any>>
+
+    @PUT("api/admin/rentals/{id}/extend")
+    suspend fun extendRental(
+        @Header("Authorization") token: String,
+        @Path("id") rentalId: String,
+        @Body request: ExtendRentalRequest
+    ): Response<Map<String, Any>>
+
+    @POST("api/admin/shipments/pickup")
+    suspend fun schedulePickup(
+        @Header("Authorization") token: String,
+        @Body request: SchedulePickupRequest
+    ): Response<Map<String, Any>>
+
+    @GET("api/admin/invoices")
+    suspend fun getInvoices(@Header("Authorization") token: String): Response<List<Invoice>>
+
+    @POST("api/admin/invoices")
+    suspend fun createInvoice(
+        @Header("Authorization") token: String,
+        @Body request: CreateInvoiceRequest
+    ): Response<Map<String, Any>>
 }

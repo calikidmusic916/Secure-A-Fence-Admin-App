@@ -28,6 +28,75 @@ class InvoicesFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         binding.recyclerViewInvoices.layoutManager = LinearLayoutManager(requireContext())
         loadInvoices()
+
+        binding.btnCreateInvoice.setOnClickListener {
+            showCreateInvoiceDialog()
+        }
+    }
+
+    private fun showCreateInvoiceDialog() {
+        val context = context ?: return
+        val builder = android.app.AlertDialog.Builder(context)
+        builder.setTitle("Create New Invoice")
+
+        val layout = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 16)
+        }
+
+        val inputOrderId = android.widget.EditText(context).apply { hint = "Order ID (e.g. ORD-101)" }
+        val inputCustomer = android.widget.EditText(context).apply { hint = "Customer Name" }
+        val inputAmount = android.widget.EditText(context).apply { 
+            hint = "Amount"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+
+        layout.addView(inputOrderId)
+        layout.addView(inputCustomer)
+        layout.addView(inputAmount)
+        builder.setView(layout)
+
+        builder.setPositiveButton("Create") { _, _ ->
+            val orderId = inputOrderId.text.toString()
+            val customer = inputCustomer.text.toString()
+            val amount = inputAmount.text.toString().toDoubleOrNull() ?: 0.0
+
+            if (orderId.isNotEmpty() && customer.isNotEmpty() && amount > 0.0) {
+                createInvoice(orderId, customer, amount)
+            } else {
+                Toast.makeText(context, "Please fill out all fields correctly", Toast.LENGTH_SHORT).show()
+            }
+        }
+        builder.setNegativeButton("Cancel", null)
+        builder.show()
+    }
+
+    private fun createInvoice(orderId: String, customer: String, amount: Double) {
+        val context = context ?: return
+        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        if (token.isNullOrEmpty()) return
+
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.instance.createInvoice(
+                    "Bearer $token",
+                    com.example.secureafenceadministrator.data.model.CreateInvoiceRequest(
+                        orderId = orderId,
+                        customerName = customer,
+                        amount = amount,
+                        status = "unpaid"
+                    )
+                )
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Invoice created successfully", Toast.LENGTH_SHORT).show()
+                    loadInvoices()
+                } else {
+                    Toast.makeText(context, "Failed to create invoice", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun loadInvoices() {

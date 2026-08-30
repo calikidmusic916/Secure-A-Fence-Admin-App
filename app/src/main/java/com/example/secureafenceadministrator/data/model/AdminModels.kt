@@ -110,3 +110,31 @@ data class ShipmentUpdateRequest(
     val dispatchDate: String?,
     val notes: String?
 )
+
+data class ExtendRentalRequest(
+    val endDate: String
+)
+
+data class SchedulePickupRequest(
+    val orderId: String,
+    val driverName: String,
+    val dispatchDate: String,
+    val destination: String,
+    val notes: String
+)
+
+data class Invoice(
+    val id: String,
+    val orderId: String,
+    val customerName: String,
+    val amount: Double,
+    val status: String,
+    val createdAt: String
+)
+
+data class CreateInvoiceRequest(
+    val orderId: String,
+    val customerName: String,
+    val amount: Double,
+    val status: String
+)
