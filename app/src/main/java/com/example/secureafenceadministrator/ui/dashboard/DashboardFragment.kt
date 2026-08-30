@@ -29,6 +29,74 @@ class DashboardFragment : Fragment() {
         binding.btnRefresh.setOnClickListener {
             loadOverview()
         }
+
+        binding.btnCreateCustomer.setOnClickListener {
+            showCreateCustomerDialog()
+        }
+    }
+
+    private fun showCreateCustomerDialog() {
+        val context = context ?: return
+        val builder = android.app.AlertDialog.Builder(context)
+        builder.setTitle("Create Customer Login Account")
+
+        val layout = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 16)
+        }
+
+        val inputName = android.widget.EditText(context).apply { hint = "Full Name" }
+        val inputEmail = android.widget.EditText(context).apply { hint = "Email Address" }
+        val inputCompany = android.widget.EditText(context).apply { hint = "Company Name" }
+        val inputPhone = android.widget.EditText(context).apply { hint = "Phone Number" }
+
+        layout.addView(inputName)
+        layout.addView(inputEmail)
+        layout.addView(inputCompany)
+        layout.addView(inputPhone)
+        builder.setView(layout)
+
+        builder.setPositiveButton("Create") { _, _ ->
+            val name = inputName.text.toString()
+            val email = inputEmail.text.toString()
+            val company = inputCompany.text.toString()
+            val phone = inputPhone.text.toString()
+
+            if (name.isNotEmpty() && email.isNotEmpty()) {
+                createCustomer(name, email, company, phone)
+            } else {
+                Toast.makeText(context, "Name and Email are required", Toast.LENGTH_SHORT).show()
+            }
+        }
+        builder.setNegativeButton("Cancel", null)
+        builder.show()
+    }
+
+    private fun createCustomer(name: String, email: String, company: String, phone: String) {
+        val context = context ?: return
+        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        if (token.isNullOrEmpty()) return
+
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.instance.createCustomer(
+                    "Bearer $token",
+                    com.example.secureafenceadministrator.data.model.CreateCustomerRequest(
+                        name = name,
+                        email = email,
+                        company = company,
+                        phone = phone
+                    )
+                )
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Customer account created successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to create customer account", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun loadOverview() {

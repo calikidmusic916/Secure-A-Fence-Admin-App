@@ -71,4 +71,10 @@ interface AdminApiService {
         @Header("Authorization") token: String,
         @Body request: CreateInvoiceRequest
     ): Response<Map<String, Any>>
+
+    @POST("api/admin/customers")
+    suspend fun createCustomer(
+        @Header("Authorization") token: String,
+        @Body request: CreateCustomerRequest
+    ): Response<Map<String, Any>>
 }

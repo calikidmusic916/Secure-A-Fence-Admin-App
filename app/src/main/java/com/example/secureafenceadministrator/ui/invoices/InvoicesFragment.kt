@@ -32,6 +32,89 @@ class InvoicesFragment : Fragment() {
         binding.btnCreateInvoice.setOnClickListener {
             showCreateInvoiceDialog()
         }
+
+        binding.btnPlaceOrder.setOnClickListener {
+            showPlaceOrderDialog()
+        }
+    }
+
+    private fun showPlaceOrderDialog() {
+        val context = context ?: return
+        val builder = android.app.AlertDialog.Builder(context)
+        builder.setTitle("Place New Order")
+
+        val layout = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 16)
+        }
+
+        val inputCustomer = android.widget.EditText(context).apply { hint = "Customer Name" }
+        val inputAddress = android.widget.EditText(context).apply { hint = "Delivery Address" }
+        val inputQty = android.widget.EditText(context).apply { 
+            hint = "Quantity"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+
+        layout.addView(inputCustomer)
+        layout.addView(inputAddress)
+        layout.addView(inputQty)
+        builder.setView(layout)
+
+        builder.setPositiveButton("Place Order") { _, _ ->
+            val customer = inputCustomer.text.toString()
+            val address = inputAddress.text.toString()
+            val qty = inputQty.text.toString().toIntOrNull() ?: 0
+
+            if (customer.isNotEmpty() && address.isNotEmpty() && qty > 0) {
+                placeOrder(customer, address, qty)
+            } else {
+                Toast.makeText(context, "Please fill out all fields correctly", Toast.LENGTH_SHORT).show()
+            }
+        }
+        builder.setNegativeButton("Cancel", null)
+        builder.show()
+    }
+
+    private fun placeOrder(customerName: String, address: String, quantity: Int) {
+        val context = context ?: return
+        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        if (token.isNullOrEmpty()) return
+
+        lifecycleScope.launch {
+            try {
+                // Simplified order placement using a basic Order model
+                val response = ApiClient.instance.createOrder(
+                    "Bearer $token",
+                    com.example.secureafenceadministrator.data.model.Order(
+                        id = "ORD-" + System.currentTimeMillis().toString().takeLast(5),
+                        customerId = "cust-manual",
+                        customerName = customerName,
+                        customerCompany = "Manual Order",
+                        customerEmail = "manual@order.com",
+                        customerPhone = "000-000-0000",
+                        orderType = "sale",
+                        items = emptyList(), // In real implementation, include items
+                        subtotal = quantity * 50.0,
+                        deliveryFee = 50.0,
+                        tax = 10.0,
+                        totalAmount = (quantity * 50.0) + 60.0,
+                        status = "pending",
+                        deliveryAddress = address,
+                        jobsiteContact = "Manual",
+                        deliveryDate = "2026-09-05",
+                        createdAt = "2026-08-29"
+                    )
+                )
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Order placed successfully", Toast.LENGTH_SHORT).show()
+                    loadInvoices()
+                } else {
+                    Toast.makeText(context, "Failed to place order", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun showCreateInvoiceDialog() {

@@ -24,7 +24,14 @@
             android:id="@+id/btnCreateInvoice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Create Invoice"/>
+            android:text="Create Invoice"
+            android:layout_marginEnd="8dp"/>
+
+        <Button
+            android:id="@+id/btnPlaceOrder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Place Order"/>
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView

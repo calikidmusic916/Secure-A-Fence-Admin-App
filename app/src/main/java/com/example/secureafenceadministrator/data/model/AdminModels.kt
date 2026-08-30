@@ -138,3 +138,19 @@ data class CreateInvoiceRequest(
     val amount: Double,
     val status: String
 )
+
+data class Customer(
+    val id: String,
+    val name: String,
+    val email: String,
+    val role: String,
+    val company: String?,
+    val phone: String?
+)
+
+data class CreateCustomerRequest(
+    val name: String,
+    val email: String,
+    val company: String?,
+    val phone: String?
+)
