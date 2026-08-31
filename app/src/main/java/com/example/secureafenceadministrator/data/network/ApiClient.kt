@@ -7,8 +7,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    // Render deployment URL for backend server
-    private const val BASE_URL = "https://secure-a-fence-backend-server.onrender.com/"
+    // Live customer-facing website server on Render
+    private const val BASE_URL = "https://secure-a-fence.onrender.com/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
