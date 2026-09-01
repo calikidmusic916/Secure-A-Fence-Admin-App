@@ -25,6 +25,13 @@ interface AdminApiService {
         @Body request: StatusUpdateRequest
     ): Response<Map<String, Any>>
 
+    @PUT("api/admin/sales/{id}/payment")
+    suspend fun updateOrderPayment(
+        @Header("Authorization") token: String,
+        @Path("id") orderId: String,
+        @Body request: OrderPaymentUpdateRequest
+    ): Response<Map<String, Any>>
+
     @GET("api/admin/rentals")
     suspend fun getRentals(@Header("Authorization") token: String): Response<List<Rental>>
 
@@ -77,4 +84,7 @@ interface AdminApiService {
         @Header("Authorization") token: String,
         @Body request: CreateCustomerRequest
     ): Response<Map<String, Any>>
+
+    @GET("api/admin/customers")
+    suspend fun getCustomers(@Header("Authorization") token: String): Response<List<Customer>>
 }

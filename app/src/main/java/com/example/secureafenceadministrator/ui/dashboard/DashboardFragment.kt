@@ -33,6 +33,10 @@ class DashboardFragment : Fragment() {
         binding.btnCreateCustomer.setOnClickListener {
             showCreateCustomerDialog()
         }
+
+        binding.btnManageCustomers.setOnClickListener {
+            showCustomersDialog()
+        }
     }
 
     private fun showCreateCustomerDialog() {
@@ -99,6 +103,72 @@ class DashboardFragment : Fragment() {
         }
     }
 
+    private fun showCustomersDialog() {
+        val context = context ?: return
+        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context) ?: return
+
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.instance.getCustomers("Bearer $token")
+                if (response.isSuccessful && response.body() != null) {
+                    val customers = response.body()!!
+                    if (customers.isEmpty()) {
+                        Toast.makeText(context, "No customers found", Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
+
+                    val items = customers.map { "${it.name} - ${it.email} (${it.company ?: "Indiv"})" }.toTypedArray()
+                    android.app.AlertDialog.Builder(context)
+                        .setTitle("Manage Customers (${customers.size})")
+                        .setItems(items) { _, which ->
+                            showCustomerDetailsDialog(customers[which])
+                        }
+                        .setNegativeButton("Close", null)
+                        .show()
+                } else {
+                    Toast.makeText(context, "Failed to load customers", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showCustomerDetailsDialog(customer: com.example.secureafenceadministrator.data.model.Customer) {
+        val context = context ?: return
+        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context) ?: return
+
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.instance.getSalesOrders("Bearer $token")
+                val customerOrders = if (response.isSuccessful && response.body() != null) {
+                    response.body()!!.filter { it.customerEmail.equals(customer.email, true) || it.customerId == customer.id }
+                } else {
+                    emptyList()
+                }
+
+                val details = StringBuilder()
+                details.append("Name: ${customer.name}\n")
+                details.append("Email: ${customer.email}\n")
+                details.append("Company: ${customer.company ?: "N/A"}\n")
+                details.append("Phone: ${customer.phone ?: "N/A"}\n")
+                details.append("Role: ${customer.role}\n\n")
+                details.append("Total Orders: ${customerOrders.size}\n")
+                for (ord in customerOrders) {
+                    details.append("• Order #${ord.id} (${ord.orderType}) - $${ord.totalAmount} [${ord.status}]\n")
+                }
+
+                android.app.AlertDialog.Builder(context)
+                    .setTitle("Customer Account: ${customer.name}")
+                    .setMessage(details.toString())
+                    .setPositiveButton("Close", null)
+                    .show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error loading orders: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun loadOverview() {
         val context = context ?: return
         val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
@@ -116,11 +186,9 @@ class DashboardFragment : Fragment() {
                     binding.tvMonthlyRental.text = "$${metrics.monthlyRentalRevenue}"
                     binding.tvActiveRentals.text = "${metrics.activeRentalsCount}"
                     binding.tvStock.text = "${metrics.panelsInWarehouse}"
-                } else if (response.code() == 401) {
-                    Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
-                    com.example.secureafenceadministrator.data.network.SessionManager.clearSession(context)
                 } else {
-                    Toast.makeText(context, "Failed to load overview", Toast.LENGTH_SHORT).show()
+                    android.util.Log.e("API_DEBUG", "Error: ${response.code()} Body: ${response.errorBody()?.string()}")
+                    Toast.makeText(context, "Failed to load overview: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()

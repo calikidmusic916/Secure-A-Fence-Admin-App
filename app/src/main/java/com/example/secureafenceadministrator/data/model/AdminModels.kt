@@ -60,7 +60,15 @@ data class Order(
     val deliveryAddress: String,
     val jobsiteContact: String,
     val deliveryDate: String,
-    val createdAt: String
+    val createdAt: String,
+    val paymentStatus: String? = "Unpaid",
+    val paymentMethod: String? = "None"
+)
+
+data class OrderPaymentUpdateRequest(
+    val paymentStatus: String,
+    val paymentMethod: String,
+    val status: String? = null
 )
 
 data class RentalItem(

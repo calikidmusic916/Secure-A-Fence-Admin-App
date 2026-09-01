@@ -163,5 +163,11 @@
             android:layout_height="wrap_content"
             android:text="Create Customer Account"/>
 
+        <Button
+            android:id="@+id/btnManageCustomers"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Manage Customers"/>
+
     </LinearLayout>
 </ScrollView>
