@@ -109,25 +109,67 @@ class DashboardFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.getCustomers("Bearer $token")
-                if (response.isSuccessful && response.body() != null) {
-                    val customers = response.body()!!
-                    if (customers.isEmpty()) {
-                        Toast.makeText(context, "No customers found", Toast.LENGTH_SHORT).show()
-                        return@launch
-                    }
+                // Fetch customers directly, but also fallback to extracting from orders
+                val customersResponse = ApiClient.instance.getCustomers("Bearer $token")
+                val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
+                val rentalsResponse = ApiClient.instance.getRentals("Bearer $token")
 
-                    val items = customers.map { "${it.name} - ${it.email} (${it.company ?: "Indiv"})" }.toTypedArray()
-                    android.app.AlertDialog.Builder(context)
-                        .setTitle("Manage Customers (${customers.size})")
-                        .setItems(items) { _, which ->
-                            showCustomerDetailsDialog(customers[which])
-                        }
-                        .setNegativeButton("Close", null)
-                        .show()
-                } else {
-                    Toast.makeText(context, "Failed to load customers", Toast.LENGTH_SHORT).show()
+                val customerMap = mutableMapOf<String, com.example.secureafenceadministrator.data.model.Customer>()
+
+                // 1. Add from direct customers endpoint if successful
+                if (customersResponse.isSuccessful && customersResponse.body() != null) {
+                    customersResponse.body()!!.forEach { customerMap[it.email.lowercase()] = it }
                 }
+
+                // 2. Add/Complement from Sales Orders
+                if (salesResponse.isSuccessful && salesResponse.body() != null) {
+                    salesResponse.body()!!.forEach { order ->
+                        val email = order.customerEmail.lowercase()
+                        if (!customerMap.containsKey(email)) {
+                            customerMap[email] = com.example.secureafenceadministrator.data.model.Customer(
+                                id = order.customerId,
+                                name = order.customerName,
+                                email = order.customerEmail,
+                                role = "customer",
+                                company = order.customerCompany,
+                                phone = order.customerPhone
+                            )
+                        }
+                    }
+                }
+
+                // 3. Add/Complement from Rentals
+                if (rentalsResponse.isSuccessful && rentalsResponse.body() != null) {
+                    rentalsResponse.body()!!.forEach { rental ->
+                        val email = rental.customerEmail.lowercase()
+                        if (!customerMap.containsKey(email)) {
+                            customerMap[email] = com.example.secureafenceadministrator.data.model.Customer(
+                                id = rental.customerId,
+                                name = rental.customerName,
+                                email = rental.customerEmail,
+                                role = "customer",
+                                company = rental.customerCompany,
+                                phone = rental.customerPhone
+                            )
+                        }
+                    }
+                }
+
+                val customers = customerMap.values.toList().sortedBy { it.name }
+
+                if (customers.isEmpty()) {
+                    Toast.makeText(context, "No customers found in system", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val items = customers.map { "${it.name} - ${it.email} (${it.company ?: "Indiv"})" }.toTypedArray()
+                android.app.AlertDialog.Builder(context)
+                    .setTitle("Manage Customers (${customers.size})")
+                    .setItems(items) { _, which ->
+                        showCustomerDetailsDialog(customers[which])
+                    }
+                    .setNegativeButton("Close", null)
+                    .show()
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -140,9 +182,17 @@ class DashboardFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.getSalesOrders("Bearer $token")
-                val customerOrders = if (response.isSuccessful && response.body() != null) {
-                    response.body()!!.filter { it.customerEmail.equals(customer.email, true) || it.customerId == customer.id }
+                val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
+                val rentalsResponse = ApiClient.instance.getRentals("Bearer $token")
+
+                val customerOrders = if (salesResponse.isSuccessful && salesResponse.body() != null) {
+                    salesResponse.body()!!.filter { it.customerEmail.equals(customer.email, true) || it.customerId == customer.id }
+                } else {
+                    emptyList()
+                }
+
+                val customerRentals = if (rentalsResponse.isSuccessful && rentalsResponse.body() != null) {
+                    rentalsResponse.body()!!.filter { it.customerEmail.equals(customer.email, true) || it.customerId == customer.id }
                 } else {
                     emptyList()
                 }
@@ -153,9 +203,17 @@ class DashboardFragment : Fragment() {
                 details.append("Company: ${customer.company ?: "N/A"}\n")
                 details.append("Phone: ${customer.phone ?: "N/A"}\n")
                 details.append("Role: ${customer.role}\n\n")
-                details.append("Total Orders: ${customerOrders.size}\n")
+                
+                details.append("--- Sales History (${customerOrders.size}) ---\n")
+                if (customerOrders.isEmpty()) details.append("No sales orders found.\n")
                 for (ord in customerOrders) {
-                    details.append("• Order #${ord.id} (${ord.orderType}) - $${ord.totalAmount} [${ord.status}]\n")
+                    details.append("• #${ord.id} - $${ord.totalAmount} [${ord.status}]\n")
+                }
+
+                details.append("\n--- Rental History (${customerRentals.size}) ---\n")
+                if (customerRentals.isEmpty()) details.append("No active rentals found.\n")
+                for (rnt in customerRentals) {
+                    details.append("• #${rnt.id} - ${rnt.items.size} items [${rnt.status}]\n")
                 }
 
                 android.app.AlertDialog.Builder(context)
@@ -164,7 +222,7 @@ class DashboardFragment : Fragment() {
                     .setPositiveButton("Close", null)
                     .show()
             } catch (e: Exception) {
-                Toast.makeText(context, "Error loading orders: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Error loading details: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
