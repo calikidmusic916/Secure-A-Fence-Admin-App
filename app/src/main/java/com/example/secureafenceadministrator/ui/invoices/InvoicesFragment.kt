@@ -41,75 +41,147 @@ class InvoicesFragment : Fragment() {
     private fun showPlaceOrderDialog() {
         val context = context ?: return
         val builder = android.app.AlertDialog.Builder(context)
-        builder.setTitle("Place New Order")
+        builder.setTitle("Place New Order (With Line Items)")
 
+        val scrollView = android.widget.ScrollView(context)
         val layout = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(32, 16, 32, 16)
         }
 
-        val inputCustomer = android.widget.EditText(context).apply { hint = "Customer Name" }
+        val inputCustomer = android.widget.EditText(context).apply { hint = "Customer Name (e.g. John Doe)" }
+        val inputEmail = android.widget.EditText(context).apply { hint = "Customer Email" }
         val inputAddress = android.widget.EditText(context).apply { hint = "Delivery Address" }
-        val inputQty = android.widget.EditText(context).apply { 
-            hint = "Quantity"
+
+        val typeSpinner = android.widget.Spinner(context).apply {
+            adapter = android.widget.ArrayAdapter(
+                context,
+                android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Sale Order", "Rental Order")
+            )
+        }
+
+        val tvItemsHeader = android.widget.TextView(context).apply {
+            text = "\nSelect Product Quantities:"
+            android.graphics.Typeface.DEFAULT_BOLD
+        }
+
+        val inputQty6x12 = android.widget.EditText(context).apply {
+            hint = "6'x12' Fence Panels ($65 buy / $15 rent)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val inputQty6x10 = android.widget.EditText(context).apply {
+            hint = "6'x10' Fence Panels ($50 buy / $12 rent)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val inputQtyStands = android.widget.EditText(context).apply {
+            hint = "Flat Bases / Stands ($10 buy / $3 rent)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val inputQtyClips = android.widget.EditText(context).apply {
+            hint = "Panel Clamps / Clips ($5 buy / $1 rent)"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
 
         layout.addView(inputCustomer)
+        layout.addView(inputEmail)
         layout.addView(inputAddress)
-        layout.addView(inputQty)
-        builder.setView(layout)
+        layout.addView(typeSpinner)
+        layout.addView(tvItemsHeader)
+        layout.addView(inputQty6x12)
+        layout.addView(inputQty6x10)
+        layout.addView(inputQtyStands)
+        layout.addView(inputQtyClips)
+        scrollView.addView(layout)
+        builder.setView(scrollView)
 
-        builder.setPositiveButton("Place Order") { _, _ ->
-            val customer = inputCustomer.text.toString()
-            val address = inputAddress.text.toString()
-            val qty = inputQty.text.toString().toIntOrNull() ?: 0
+        builder.setPositiveButton("Submit Order") { _, _ ->
+            val customer = inputCustomer.text.toString().trim()
+            val email = inputEmail.text.toString().trim().ifEmpty { "sales@order.com" }
+            val address = inputAddress.text.toString().trim().ifEmpty { "Sacramento Warehouse Pick-up" }
+            val isRental = typeSpinner.selectedItemPosition == 1
 
-            if (customer.isNotEmpty() && address.isNotEmpty() && qty > 0) {
-                placeOrder(customer, address, qty)
+            val qty6x12 = inputQty6x12.text.toString().toIntOrNull() ?: 0
+            val qty6x10 = inputQty6x10.text.toString().toIntOrNull() ?: 0
+            val qtyStands = inputQtyStands.text.toString().toIntOrNull() ?: 0
+            val qtyClips = inputQtyClips.text.toString().toIntOrNull() ?: 0
+
+            val items = mutableListOf<com.example.secureafenceadministrator.data.model.OrderItem>()
+            if (qty6x12 > 0) {
+                val price = if (isRental) 15.0 else 65.0
+                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-panel-6x12", "Refurbished Temporary Fence Panel (6' x 12')", price, qty6x12, price * qty6x12))
+            }
+            if (qty6x10 > 0) {
+                val price = if (isRental) 12.0 else 50.0
+                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-panel-6x10", "Refurbished Temporary Fence Panel (6' x 10')", price, qty6x10, price * qty6x10))
+            }
+            if (qtyStands > 0) {
+                val price = if (isRental) 3.0 else 10.0
+                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-stand-sale", "Flat Stand (Standard Tubular Base)", price, qtyStands, price * qtyStands))
+            }
+            if (qtyClips > 0) {
+                val price = if (isRental) 1.0 else 5.0
+                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-clip-sale", "Safety Clamp / Panel Connector Clip", price, qtyClips, price * qtyClips))
+            }
+
+            if (customer.isNotEmpty() && items.isNotEmpty()) {
+                placeDetailedOrder(customer, email, address, if (isRental) "rental" else "sale", items)
             } else {
-                Toast.makeText(context, "Please fill out all fields correctly", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Please enter customer name and at least one item quantity", Toast.LENGTH_SHORT).show()
             }
         }
         builder.setNegativeButton("Cancel", null)
         builder.show()
     }
 
-    private fun placeOrder(customerName: String, address: String, quantity: Int) {
+    private fun placeDetailedOrder(
+        customerName: String,
+        customerEmail: String,
+        address: String,
+        orderType: String,
+        items: List<com.example.secureafenceadministrator.data.model.OrderItem>
+    ) {
         val context = context ?: return
         val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
         if (token.isNullOrEmpty()) return
 
+        val subtotal = items.sumOf { it.total }
+        val deliveryFee = if (subtotal > 0) 50.0 else 0.0
+        val tax = Math.round(subtotal * 0.08 * 100.0) / 100.0
+        val totalAmount = subtotal + deliveryFee + tax
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
         lifecycleScope.launch {
             try {
-                // Simplified order placement using a basic Order model
                 val response = ApiClient.instance.createOrder(
                     "Bearer $token",
                     com.example.secureafenceadministrator.data.model.Order(
-                        id = "ORD-" + System.currentTimeMillis().toString().takeLast(5),
-                        customerId = "cust-manual",
+                        id = "ORD-" + (1000..9999).random(),
+                        customerId = "cust-" + System.currentTimeMillis(),
                         customerName = customerName,
-                        customerCompany = "Manual Order",
-                        customerEmail = "manual@order.com",
-                        customerPhone = "000-000-0000",
-                        orderType = "sale",
-                        items = emptyList(), // In real implementation, include items
-                        subtotal = quantity * 50.0,
-                        deliveryFee = 50.0,
-                        tax = 10.0,
-                        totalAmount = (quantity * 50.0) + 60.0,
-                        status = "pending",
+                        customerCompany = "Direct Client",
+                        customerEmail = customerEmail,
+                        customerPhone = "(279) 261-3890",
+                        orderType = orderType,
+                        items = items,
+                        subtotal = subtotal,
+                        deliveryFee = deliveryFee,
+                        tax = tax,
+                        totalAmount = totalAmount,
+                        status = "Processing",
                         deliveryAddress = address,
-                        jobsiteContact = "Manual",
-                        deliveryDate = "2026-09-05",
-                        createdAt = "2026-08-29"
+                        jobsiteContact = customerName,
+                        deliveryDate = today,
+                        createdAt = today,
+                        paymentStatus = "Unpaid",
+                        paymentMethod = "None"
                     )
                 )
                 if (response.isSuccessful) {
-                    Toast.makeText(context, "Order placed successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Order created with ${items.size} line items!", Toast.LENGTH_SHORT).show()
                     loadInvoices()
                 } else {
-                    Toast.makeText(context, "Failed to place order", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed to place order: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
