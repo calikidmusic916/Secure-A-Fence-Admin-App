@@ -66,7 +66,45 @@ class RentalsFragment : Fragment() {
     private fun showExtendDialog(rental: com.example.secureafenceadministrator.data.model.Rental) {
         val context = context ?: return
         val builder = android.app.AlertDialog.Builder(context)
-        builder.setTitle("Extend Rental #${rental.id}")
+        builder.setTitle("Rental Details #${rental.id}")
+
+        val detailText = StringBuilder()
+        detailText.append("Customer: ${rental.customerName}\n")
+        detailText.append("Company: ${rental.customerCompany}\n")
+        detailText.append("Phone: ${rental.customerPhone}\n")
+        detailText.append("Jobsite: ${rental.jobsiteAddress}\n")
+        detailText.append("Start Date: ${rental.startDate}\n")
+        detailText.append("End Date: ${rental.endDate}\n")
+        detailText.append("Status: ${rental.status}\n\n")
+
+        detailText.append("--- Rented Line Items ---\n")
+        if (rental.items.isNullOrEmpty()) {
+            detailText.append("• 1x Temporary Fence Package @ $${rental.monthlyRateTotal}/mo\n")
+        } else {
+            for (item in rental.items) {
+                detailText.append("• ${item.quantity}x ${item.name} @ $${item.monthlyUnitPrice}/mo = $${item.subtotal}/mo\n")
+            }
+        }
+        detailText.append("\n")
+        detailText.append("Monthly Rate Total: $${rental.monthlyRateTotal}/mo\n")
+        if (!rental.notes.isNullOrEmpty()) {
+            detailText.append("Notes: ${rental.notes}\n")
+        }
+
+        builder.setMessage(detailText.toString())
+
+        builder.setPositiveButton("Extend Rental Date") { _, _ ->
+            showChangeEndDateDialog(rental)
+        }
+
+        builder.setNegativeButton("Close", null)
+        builder.show()
+    }
+
+    private fun showChangeEndDateDialog(rental: com.example.secureafenceadministrator.data.model.Rental) {
+        val context = context ?: return
+        val builder = android.app.AlertDialog.Builder(context)
+        builder.setTitle("Extend Rental Period #${rental.id}")
 
         val input = android.widget.EditText(context).apply {
             hint = "New End Date (YYYY-MM-DD)"
@@ -75,7 +113,7 @@ class RentalsFragment : Fragment() {
         }
         builder.setView(input)
 
-        builder.setPositiveButton("Extend") { _, _ ->
+        builder.setPositiveButton("Save New End Date") { _, _ ->
             val newDate = input.text.toString()
             if (newDate.isNotEmpty()) {
                 extendRental(rental.id, newDate)
