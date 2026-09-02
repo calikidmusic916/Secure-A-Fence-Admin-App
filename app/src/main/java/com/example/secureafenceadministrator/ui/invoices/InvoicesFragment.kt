@@ -294,16 +294,13 @@ class InvoicesFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.updateOrderPayment(
+                val response = ApiClient.instance.updateOrderStatus(
                     "Bearer $token",
                     orderId,
-                    com.example.secureafenceadministrator.data.model.OrderPaymentUpdateRequest(
-                        paymentStatus = paymentStatus,
-                        paymentMethod = paymentMethod
-                    )
+                    com.example.secureafenceadministrator.data.model.StatusUpdateRequest(status = "Paid ($paymentMethod)")
                 )
                 if (response.isSuccessful) {
-                    Toast.makeText(context, "Payment status updated to $paymentStatus", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Payment status updated to $paymentStatus via $paymentMethod", Toast.LENGTH_SHORT).show()
                     loadInvoices()
                 } else {
                     Toast.makeText(context, "Failed to update payment", Toast.LENGTH_SHORT).show()
@@ -340,50 +337,93 @@ class InvoicesFragment : Fragment() {
     private fun generatePdfInvoice(order: com.example.secureafenceadministrator.data.model.Order) {
         val pdfDocument = android.graphics.pdf.PdfDocument()
         val paint = android.graphics.Paint()
-        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(300, 600, 1).create()
+        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
         val page = pdfDocument.startPage(pageInfo)
         val canvas = page.canvas
 
-        paint.textSize = 12f
+        // Header
+        paint.textSize = 24f
         paint.isFakeBoldText = true
-        canvas.drawText("SECURE-A-FENCE INVOICE", 10f, 25f, paint)
-
-        paint.textSize = 8f
+        canvas.drawText("SECURE-A-FENCE RENTALS & SALES", 40f, 60f, paint)
+        paint.textSize = 12f
         paint.isFakeBoldText = false
-        canvas.drawText("Order ID: ${order.id}", 10f, 45f, paint)
-        canvas.drawText("Customer: ${order.customerName}", 10f, 60f, paint)
-        canvas.drawText("Company: ${order.customerCompany}", 10f, 75f, paint)
-        canvas.drawText("Address: ${order.deliveryAddress}", 10f, 90f, paint)
-        canvas.drawText("Date: ${order.deliveryDate}", 10f, 105f, paint)
+        canvas.drawText("123 Perimeter Way, Sacramento, CA 95814 | Phone: (279) 261-3890", 40f, 85f, paint)
+        canvas.drawText("Web: secure-a-fence.com | Email: support@secureafence.com", 40f, 100f, paint)
+        canvas.drawLine(40f, 115f, 555f, 115f, paint)
 
-        canvas.drawText("Items:", 10f, 130f, paint)
-        var y = 145f
+        // Metadata
+        paint.textSize = 16f
+        paint.isFakeBoldText = true
+        canvas.drawText("INVOICE / ORDER SUMMARY", 40f, 150f, paint)
+        paint.textSize = 12f
+        paint.isFakeBoldText = false
+        canvas.drawText("Order ID: ${order.id}", 40f, 175f, paint)
+        canvas.drawText("Date: ${order.deliveryDate}", 40f, 190f, paint)
+        canvas.drawText("Status: ${order.status}", 40f, 205f, paint)
+        canvas.drawText("Payment: ${order.paymentStatus ?: "Unpaid"} (${order.paymentMethod ?: "None"})", 40f, 220f, paint)
+
+        // Bill To
+        paint.isFakeBoldText = true
+        canvas.drawText("BILL TO:", 300f, 150f, paint)
+        paint.isFakeBoldText = false
+        canvas.drawText(order.customerName, 300f, 175f, paint)
+        canvas.drawText(order.customerCompany, 300f, 190f, paint)
+        canvas.drawText(order.deliveryAddress, 300f, 205f, paint)
+
+        // Table Header
+        paint.isFakeBoldText = true
+        canvas.drawLine(40f, 240f, 555f, 240f, paint)
+        canvas.drawText("Item Description", 40f, 260f, paint)
+        canvas.drawText("Qty", 350f, 260f, paint)
+        canvas.drawText("Unit Price", 420f, 260f, paint)
+        canvas.drawText("Total", 500f, 260f, paint)
+        canvas.drawLine(40f, 275f, 555f, 275f, paint)
+
+        // Items
+        paint.isFakeBoldText = false
+        var y = 300f
         if (order.items.isNullOrEmpty()) {
-            canvas.drawText("1x Custom Temporary Fence Package @ $${order.subtotal}", 10f, y, paint)
-            y += 15f
+            canvas.drawText("Custom Temporary Fence Package", 40f, y, paint)
+            canvas.drawText("1", 350f, y, paint)
+            canvas.drawText("$${order.subtotal}", 420f, y, paint)
+            canvas.drawText("$${order.subtotal}", 500f, y, paint)
+            y += 25f
         } else {
             for (item in order.items) {
-                canvas.drawText("${item.quantity}x ${item.name} @ $${item.unitPrice}", 10f, y, paint)
-                y += 15f
+                canvas.drawText(item.name.take(30), 40f, y, paint)
+                canvas.drawText(item.quantity.toString(), 350f, y, paint)
+                canvas.drawText("$${item.unitPrice}", 420f, y, paint)
+                canvas.drawText("$${item.total}", 500f, y, paint)
+                y += 25f
             }
         }
 
-        y += 10f
-        canvas.drawText("Subtotal: $${order.subtotal}", 10f, y, paint)
-        y += 15f
-        canvas.drawText("Delivery Fee: $${order.deliveryFee}", 10f, y, paint)
-        y += 15f
-        canvas.drawText("Tax: $${order.tax}", 10f, y, paint)
-        y += 15f
+        // Totals
+        canvas.drawLine(300f, y + 10, 555f, y + 10, paint)
+        y += 40f
+        canvas.drawText("Subtotal:", 420f, y, paint)
+        canvas.drawText("$${order.subtotal}", 500f, y, paint)
+        y += 25f
+        canvas.drawText("Delivery Fee:", 420f, y, paint)
+        canvas.drawText("$${order.deliveryFee}", 500f, y, paint)
+        y += 25f
+        canvas.drawText("Tax (8%):", 420f, y, paint)
+        canvas.drawText("$${order.tax}", 500f, y, paint)
+        y += 25f
         paint.isFakeBoldText = true
-        canvas.drawText("Total: $${order.totalAmount}", 10f, y, paint)
+        canvas.drawText("Total:", 420f, y, paint)
+        canvas.drawText("$${order.totalAmount}", 500f, y, paint)
+
+        // Footer
+        paint.isFakeBoldText = false
+        canvas.drawText("Thank you for choosing Secure-A-Fence Temporary Perimeter Protection!", 40f, 780f, paint)
 
         pdfDocument.finishPage(page)
 
         val file = java.io.File("/sdcard/Download/Invoice_${order.id}.pdf")
         try {
             pdfDocument.writeTo(java.io.FileOutputStream(file))
-            Toast.makeText(context, "Invoice saved to Downloads as Invoice_${order.id}.pdf", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Invoice exported: Invoice_${order.id}.pdf", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(context, "PDF Error: ${e.message}", Toast.LENGTH_SHORT).show()
         } finally {
