@@ -294,10 +294,13 @@ class InvoicesFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.updateOrderStatus(
+                val response = ApiClient.instance.updateOrderPayment(
                     "Bearer $token",
                     orderId,
-                    com.example.secureafenceadministrator.data.model.StatusUpdateRequest(status = "Paid ($paymentMethod)")
+                    com.example.secureafenceadministrator.data.model.OrderPaymentUpdateRequest(
+                        paymentStatus = paymentStatus,
+                        paymentMethod = paymentMethod
+                    )
                 )
                 if (response.isSuccessful) {
                     Toast.makeText(context, "Payment status updated to $paymentStatus via $paymentMethod", Toast.LENGTH_SHORT).show()
