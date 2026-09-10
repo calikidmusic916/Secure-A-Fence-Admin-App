@@ -1,3 +1,6 @@
 [submodule "web-frontend"]
-	path = web-frontend
+	path = Website/web-frontend
 	url = https://github.com/keyfobproz/Secure-a-fence.git
+[submodule "Website/backend-server"]
+	path = Website/backend-server
+	url = https://github.com/keyfobproz/Secure-a-fence-backend-server.git
