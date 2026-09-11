@@ -1,6 +1,0 @@
-[submodule "web-frontend"]
-	path = Website/web-frontend
-	url = https://github.com/calikidmusic916/Secure-A-Fence.git
-[submodule "Website/backend-server"]
-	path = Website/backend-server
-	url = https://github.com/keyfobproz/Secure-a-fence-backend-server.git
