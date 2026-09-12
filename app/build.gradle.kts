@@ -39,6 +39,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.constraintlayout)
+    implementation(libs.coil)
     
     // Retrofit & Gson
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

@@ -1,17 +1,17 @@
 package com.example.secureafenceadministrator.ui.products
 
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
-import android.widget.EditText
-import android.widget.Spinner
-import android.widget.Toast
+import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import coil.load
 import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.data.model.Product
 import com.example.secureafenceadministrator.data.network.ApiClient
@@ -19,11 +19,27 @@ import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.FragmentProductsBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.FileOutputStream
 
 class ProductsFragment : Fragment() {
 
     private var _binding: FragmentProductsBinding? = null
     private val binding get() = _binding!!
+    
+    private var selectedImageUri: Uri? = null
+    private var ivPreview: ImageView? = null
+    private var currentImageUrl: String? = null
+
+    private val imagePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            selectedImageUri = it
+            ivPreview?.load(it)
+        }
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentProductsBinding.inflate(inflater, container, false)
@@ -55,6 +71,7 @@ class ProductsFragment : Fragment() {
                         titleProvider = { it.name },
                         subtitleProvider = { "Price: $${it.salePrice} | Stock: ${it.inStock}" },
                         statusProvider = { if (it.suspended) "SUSPENDED" else "ACTIVE" },
+                        imageProvider = { it.image },
                         onItemClick = { showProductDetails(it) }
                     )
                     binding.recyclerViewProducts.adapter = adapter
@@ -150,9 +167,14 @@ class ProductsFragment : Fragment() {
         val etDescription = view.findViewById<EditText>(R.id.et_description)
         val etSpecs = view.findViewById<EditText>(R.id.et_specs)
         val spType = view.findViewById<Spinner>(R.id.sp_product_type)
+        ivPreview = view.findViewById(R.id.iv_product_preview)
+        val btnUpload = view.findViewById<Button>(R.id.btn_upload_image)
 
         val types = arrayOf("panel", "stand", "clip", "gate", "accessory")
         spType.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, types)
+
+        selectedImageUri = null
+        currentImageUrl = product?.image
 
         product?.let {
             etName.setText(it.name)
@@ -162,28 +184,88 @@ class ProductsFragment : Fragment() {
             etDescription.setText(it.description)
             etSpecs.setText(it.specs)
             spType.setSelection(types.indexOf(it.type))
+            
+            if (!it.image.isNullOrEmpty()) {
+                val fullUrl = if (it.image.startsWith("/")) "https://secure-a-fence-backend.onrender.com${it.image}" else it.image
+                ivPreview?.load(fullUrl)
+            }
+        }
+
+        btnUpload.setOnClickListener {
+            imagePickerLauncher.launch("image/*")
         }
 
         builder.setView(view)
         builder.setPositiveButton("Save") { _, _ ->
-            val newProduct = Product(
-                id = product?.id,
-                name = etName.text.toString(),
-                category = "sales",
-                type = spType.selectedItem.toString(),
-                salePrice = etSalePrice.text.toString().toDoubleOrNull() ?: 0.0,
-                rentalPriceMonthly = etRentalPrice.text.toString().toDoubleOrNull() ?: 0.0,
-                inStock = etStock.text.toString().toIntOrNull() ?: 0,
-                rentedCount = product?.rentedCount ?: 0,
-                description = etDescription.text.toString(),
-                image = product?.image ?: "/assets/panel.png",
-                specs = etSpecs.text.toString(),
-                suspended = product?.suspended ?: false
-            )
-            saveProduct(newProduct)
+            val pName = etName.text.toString()
+            if (pName.isEmpty()) return@setPositiveButton
+
+            lifecycleScope.launch {
+                var finalImageUrl = currentImageUrl ?: "/assets/panel.png"
+                
+                selectedImageUri?.let { uri ->
+                    val uploadedUrl = uploadImage(uri)
+                    if (uploadedUrl != null) {
+                        finalImageUrl = uploadedUrl
+                    }
+                }
+
+                val newProduct = Product(
+                    id = product?.id,
+                    name = pName,
+                    category = "sales",
+                    type = spType.selectedItem.toString(),
+                    salePrice = etSalePrice.text.toString().toDoubleOrNull() ?: 0.0,
+                    rentalPriceMonthly = etRentalPrice.text.toString().toDoubleOrNull() ?: 0.0,
+                    inStock = etStock.text.toString().toIntOrNull() ?: 0,
+                    rentedCount = product?.rentedCount ?: 0,
+                    description = etDescription.text.toString(),
+                    image = finalImageUrl,
+                    specs = etSpecs.text.toString(),
+                    suspended = product?.suspended ?: false
+                )
+                saveProduct(newProduct)
+            }
         }
         builder.setNegativeButton("Cancel", null)
         builder.show()
+    }
+
+    private suspend fun uploadImage(uri: Uri): String? {
+        val context = context ?: return null
+        val token = SessionManager.getToken(context) ?: return null
+        
+        try {
+            val file = uriToFile(uri) ?: return null
+            val requestFile = file.asRequestBody("image/*".toMediaTypeOrNull())
+            val body = MultipartBody.Part.createFormData("image", file.name, requestFile)
+            
+            val response = ApiClient.instance.uploadProductImage("Bearer $token", body)
+            if (response.isSuccessful && response.body() != null) {
+                return response.body()!!["imageUrl"] as? String
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
+    private fun uriToFile(uri: Uri): File? {
+        val context = context ?: return null
+        val contentResolver = context.contentResolver
+        val tempFile = File(context.cacheDir, "upload_${System.currentTimeMillis()}.jpg")
+        
+        try {
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            return tempFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
     }
 
     private fun saveProduct(product: Product) {

@@ -3,6 +3,7 @@ package com.example.secureafenceadministrator.ui.common
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import coil.load
 import com.example.secureafenceadministrator.databinding.ItemGenericBinding
 
 class GenericAdapter<T>(
@@ -10,6 +11,7 @@ class GenericAdapter<T>(
     private val titleProvider: (T) -> String,
     private val subtitleProvider: (T) -> String,
     private val statusProvider: (T) -> String,
+    private val imageProvider: ((T) -> String?)? = null,
     private val onItemClick: ((T) -> Unit)? = null
 ) : RecyclerView.Adapter<GenericAdapter.ViewHolder>() {
 
@@ -25,6 +27,20 @@ class GenericAdapter<T>(
         holder.binding.tvTitle.text = titleProvider(item)
         holder.binding.tvSubtitle.text = subtitleProvider(item)
         holder.binding.tvStatus.text = statusProvider(item)
+        
+        imageProvider?.let { provider ->
+            val imageUrl = provider(item)
+            if (!imageUrl.isNullOrEmpty()) {
+                // Ensure absolute URL if it starts with /
+                val fullUrl = if (imageUrl.startsWith("/")) {
+                    "https://secure-a-fence-backend.onrender.com$imageUrl"
+                } else {
+                    imageUrl
+                }
+                holder.binding.ivIcon.load(fullUrl)
+            }
+        }
+        
         holder.itemView.setOnClickListener { onItemClick?.invoke(item) }
     }
 

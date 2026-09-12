@@ -1,6 +1,7 @@
 package com.example.secureafenceadministrator.data.network
 
 import com.example.secureafenceadministrator.data.model.*
+import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -110,5 +111,12 @@ interface AdminApiService {
     suspend fun deleteProduct(
         @Header("Authorization") token: String,
         @Path("id") productId: String
+    ): Response<Map<String, Any>>
+
+    @Multipart
+    @POST("api/admin/products/upload")
+    suspend fun uploadProductImage(
+        @Header("Authorization") token: String,
+        @Part image: MultipartBody.Part
     ): Response<Map<String, Any>>
 }
