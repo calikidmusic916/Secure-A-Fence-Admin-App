@@ -87,4 +87,28 @@ interface AdminApiService {
 
     @GET("api/admin/customers")
     suspend fun getCustomers(@Header("Authorization") token: String): Response<List<Customer>>
+
+    // --- PRODUCT MANAGEMENT ---
+
+    @GET("api/admin/products")
+    suspend fun getAdminProducts(@Header("Authorization") token: String): Response<List<Product>>
+
+    @POST("api/admin/products")
+    suspend fun createProduct(
+        @Header("Authorization") token: String,
+        @Body product: Product
+    ): Response<Map<String, Any>>
+
+    @PUT("api/admin/products/{id}")
+    suspend fun updateProduct(
+        @Header("Authorization") token: String,
+        @Path("id") productId: String,
+        @Body product: Product
+    ): Response<Map<String, Any>>
+
+    @DELETE("api/admin/products/{id}")
+    suspend fun deleteProduct(
+        @Header("Authorization") token: String,
+        @Path("id") productId: String
+    ): Response<Map<String, Any>>
 }

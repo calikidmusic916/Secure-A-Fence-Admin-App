@@ -8,6 +8,7 @@ import com.example.secureafenceadministrator.databinding.ActivityMainBinding
 import com.example.secureafenceadministrator.ui.dashboard.DashboardFragment
 import com.example.secureafenceadministrator.ui.deliveries.DeliveriesFragment
 import com.example.secureafenceadministrator.ui.invoices.InvoicesFragment
+import com.example.secureafenceadministrator.ui.products.ProductsFragment
 import com.example.secureafenceadministrator.ui.rentals.RentalsFragment
 
 class MainActivity : AppCompatActivity() {
@@ -44,6 +45,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.nav_invoices -> {
                     loadFragment(InvoicesFragment())
+                    true
+                }
+                R.id.nav_products -> {
+                    loadFragment(ProductsFragment())
                     true
                 }
                 else -> false

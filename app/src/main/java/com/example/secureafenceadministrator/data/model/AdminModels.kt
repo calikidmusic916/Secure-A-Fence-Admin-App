@@ -162,3 +162,18 @@ data class CreateCustomerRequest(
     val company: String?,
     val phone: String?
 )
+
+data class Product(
+    val id: String?,
+    val name: String,
+    val category: String,
+    val type: String,
+    val salePrice: Double,
+    val rentalPriceMonthly: Double,
+    val inStock: Int,
+    val rentedCount: Int,
+    val description: String,
+    val image: String,
+    val specs: String,
+    val suspended: Boolean = false
+)
