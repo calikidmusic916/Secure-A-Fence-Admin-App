@@ -93,8 +93,8 @@ class CalculatorFragment : Fragment() {
         // Minimum Order Logic
         val finalTotal = if (rawTotal < 300) 300.0 else rawTotal
 
-        // Equipment breakdown
-        val panelsCount = ceil(L / 10.0).toInt()
+        // Equipment breakdown based on 6x12 panels (12 feet width)
+        val panelsCount = ceil(L / 12.0).toInt()
         val standsCount = if (panelsCount > 0) panelsCount + 1 else 0
         val clipsCount = panelsCount
 
