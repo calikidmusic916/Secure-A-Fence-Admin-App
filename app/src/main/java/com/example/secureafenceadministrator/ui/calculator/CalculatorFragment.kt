@@ -19,6 +19,7 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.ceil
 
 class CalculatorFragment : Fragment() {
 
@@ -92,9 +93,15 @@ class CalculatorFragment : Fragment() {
         // Minimum Order Logic
         val finalTotal = if (rawTotal < 300) 300.0 else rawTotal
 
+        // Equipment breakdown
+        val panelsCount = ceil(L / 10.0).toInt()
+        val standsCount = if (panelsCount > 0) panelsCount + 1 else 0
+        val clipsCount = panelsCount
+
         currentQuoteData = QuoteData(L, M, P, G, D, totalMonthly, setupTotal, finalTotal)
 
         val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.US)
+        binding.tvEquipmentBreakdown.text = "$panelsCount Panels | $standsCount Stands | $clipsCount Clips"
         binding.tvSetupTotal.text = currencyFormatter.format(setupTotal)
         binding.tvMonthlyRate.text = "${currencyFormatter.format(totalMonthly)} / month"
         binding.tvGrandTotalLabel.text = "Total Estimated Cost (for $M months)"
