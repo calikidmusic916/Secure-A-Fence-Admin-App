@@ -71,6 +71,7 @@ class ProductsFragment : Fragment() {
                         titleProvider = { it.name },
                         subtitleProvider = { "Price: $${it.salePrice} | Stock: ${it.inStock}" },
                         statusProvider = { if (it.suspended) "SUSPENDED" else "ACTIVE" },
+                        descriptionProvider = { it.description },
                         imageProvider = { it.image },
                         onItemClick = { showProductDetails(it) }
                     )

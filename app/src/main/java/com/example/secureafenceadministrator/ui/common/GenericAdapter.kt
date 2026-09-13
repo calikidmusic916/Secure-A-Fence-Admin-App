@@ -1,6 +1,7 @@
 package com.example.secureafenceadministrator.ui.common
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
@@ -11,6 +12,7 @@ class GenericAdapter<T>(
     private val titleProvider: (T) -> String,
     private val subtitleProvider: (T) -> String,
     private val statusProvider: (T) -> String,
+    private val descriptionProvider: ((T) -> String?)? = null,
     private val imageProvider: ((T) -> String?)? = null,
     private val onItemClick: ((T) -> Unit)? = null
 ) : RecyclerView.Adapter<GenericAdapter.ViewHolder>() {
@@ -27,18 +29,34 @@ class GenericAdapter<T>(
         holder.binding.tvTitle.text = titleProvider(item)
         holder.binding.tvSubtitle.text = subtitleProvider(item)
         holder.binding.tvStatus.text = statusProvider(item)
+
+        descriptionProvider?.let { provider ->
+            val desc = provider(item)
+            if (!desc.isNullOrEmpty()) {
+                holder.binding.tvDescription.text = desc
+                holder.binding.tvDescription.visibility = View.VISIBLE
+            } else {
+                holder.binding.tvDescription.visibility = View.GONE
+            }
+        } ?: run {
+            holder.binding.tvDescription.visibility = View.GONE
+        }
         
         imageProvider?.let { provider ->
             val imageUrl = provider(item)
             if (!imageUrl.isNullOrEmpty()) {
-                // Ensure absolute URL if it starts with /
                 val fullUrl = if (imageUrl.startsWith("/")) {
                     "https://secure-a-fence-backend.onrender.com$imageUrl"
                 } else {
                     imageUrl
                 }
+                holder.binding.ivIcon.visibility = View.VISIBLE
                 holder.binding.ivIcon.load(fullUrl)
+            } else {
+                holder.binding.ivIcon.visibility = View.GONE
             }
+        } ?: run {
+            holder.binding.ivIcon.visibility = View.GONE
         }
         
         holder.itemView.setOnClickListener { onItemClick?.invoke(item) }
