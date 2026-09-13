@@ -160,7 +160,8 @@ data class CreateCustomerRequest(
     val name: String,
     val email: String,
     val company: String?,
-    val phone: String?
+    val phone: String?,
+    val role: String? = "customer"
 )
 
 data class Product(

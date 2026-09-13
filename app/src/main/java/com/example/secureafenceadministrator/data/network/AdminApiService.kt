@@ -58,6 +58,12 @@ interface AdminApiService {
         @Body request: Order
     ): Response<Map<String, Any>>
 
+    @POST("api/orders")
+    suspend fun submitCustomQuoteOrder(
+        @Header("Authorization") token: String,
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
+    ): Response<Map<String, Any>>
+
     @PUT("api/admin/rentals/{id}/extend")
     suspend fun extendRental(
         @Header("Authorization") token: String,
