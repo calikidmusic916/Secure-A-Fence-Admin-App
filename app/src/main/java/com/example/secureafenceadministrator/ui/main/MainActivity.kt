@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.databinding.ActivityMainBinding
+import com.example.secureafenceadministrator.ui.customers.CustomersFragment
 import com.example.secureafenceadministrator.ui.dashboard.DashboardFragment
 import com.example.secureafenceadministrator.ui.deliveries.DeliveriesFragment
 import com.example.secureafenceadministrator.ui.invoices.InvoicesFragment
@@ -49,6 +50,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.nav_products -> {
                     loadFragment(ProductsFragment())
+                    true
+                }
+                R.id.nav_customers -> {
+                    loadFragment(CustomersFragment())
                     true
                 }
                 else -> false

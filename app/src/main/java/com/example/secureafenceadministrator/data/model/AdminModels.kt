@@ -147,13 +147,27 @@ data class CreateInvoiceRequest(
     val status: String
 )
 
+data class Jobsite(
+    val id: String? = null,
+    val name: String,
+    val address: String,
+    val contactName: String? = null,
+    val contactPhone: String? = null,
+    val specialInstructions: String? = null,
+    val deliveryDistanceMiles: Double = 0.0,
+    val activeRentals: List<Rental>? = null
+)
+
 data class Customer(
     val id: String,
     val name: String,
     val email: String,
     val role: String,
     val company: String?,
-    val phone: String?
+    val phone: String?,
+    val isTaxable: Boolean = true,
+    val businessAddress: String? = null,
+    val jobsites: List<Jobsite>? = null
 )
 
 data class CreateCustomerRequest(
@@ -161,7 +175,10 @@ data class CreateCustomerRequest(
     val email: String,
     val company: String?,
     val phone: String?,
-    val role: String? = "customer"
+    val role: String? = "customer",
+    val isTaxable: Boolean = true,
+    val businessAddress: String? = null,
+    val jobsites: List<Jobsite>? = null
 )
 
 data class Product(
