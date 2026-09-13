@@ -422,7 +422,7 @@ class InvoicesFragment : Fragment() {
         canvas.drawText("SECURE-A-FENCE RENTALS & SALES", 40f, 60f, paint)
         paint.textSize = 12f
         paint.isFakeBoldText = false
-        canvas.drawText("123 Perimeter Way, Sacramento, CA 95814 | Phone: (279) 261-3890", 40f, 85f, paint)
+        canvas.drawText("123 Perimeter Way, Sacramento, CA 95814 | Phone: 916-573-9543", 40f, 85f, paint)
         canvas.drawText("Web: secure-a-fence.com | Email: support@secureafence.com", 40f, 100f, paint)
         canvas.drawLine(40f, 115f, 555f, 115f, paint)
 
