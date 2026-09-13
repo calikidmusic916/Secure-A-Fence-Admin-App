@@ -97,6 +97,7 @@ class ProductsFragment : Fragment() {
             Rental Price: $${product.rentalPriceMonthly}/mo
             Stock: ${product.inStock}
             Rented: ${product.rentedCount}
+            Rental Catalog: ${if (product.isRental) "Yes" else "No"}
             Status: ${if (product.suspended) "Suspended" else "Active"}
             
             Description: ${product.description}
@@ -167,6 +168,7 @@ class ProductsFragment : Fragment() {
         val etStock = view.findViewById<EditText>(R.id.et_stock)
         val etDescription = view.findViewById<EditText>(R.id.et_description)
         val etSpecs = view.findViewById<EditText>(R.id.et_specs)
+        val cbIsRental = view.findViewById<CheckBox>(R.id.cb_is_rental)
         val spType = view.findViewById<Spinner>(R.id.sp_product_type)
         ivPreview = view.findViewById(R.id.iv_product_preview)
         val btnUpload = view.findViewById<Button>(R.id.btn_upload_image)
@@ -184,6 +186,7 @@ class ProductsFragment : Fragment() {
             etStock.setText(it.inStock.toString())
             etDescription.setText(it.description)
             etSpecs.setText(it.specs)
+            cbIsRental.isChecked = it.isRental
             spType.setSelection(types.indexOf(it.type))
             
             if (!it.image.isNullOrEmpty()) {
@@ -223,7 +226,8 @@ class ProductsFragment : Fragment() {
                     description = etDescription.text.toString(),
                     image = finalImageUrl,
                     specs = etSpecs.text.toString(),
-                    suspended = product?.suspended ?: false
+                    suspended = product?.suspended ?: false,
+                    isRental = cbIsRental.isChecked
                 )
                 saveProduct(newProduct)
             }

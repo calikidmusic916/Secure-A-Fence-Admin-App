@@ -95,5 +95,13 @@
             android:hint="Specs (e.g. Dimensions)"
             android:inputType="text" />
 
+        <com.google.android.material.checkbox.MaterialCheckBox
+            android:id="@+id/cb_is_rental"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Show in Rental Catalog"
+            android:checked="true" />
+
     </LinearLayout>
 </ScrollView>
