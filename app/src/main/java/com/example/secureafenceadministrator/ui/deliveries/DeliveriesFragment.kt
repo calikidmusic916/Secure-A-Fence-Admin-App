@@ -1,15 +1,21 @@
 package com.example.secureafenceadministrator.ui.deliveries
 
-import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.secureafenceadministrator.data.model.SchedulePickupRequest
+import com.example.secureafenceadministrator.data.model.Shipment
+import com.example.secureafenceadministrator.data.model.ShipmentUpdateRequest
 import com.example.secureafenceadministrator.data.network.ApiClient
+import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.FragmentDeliveriesBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
@@ -36,19 +42,19 @@ class DeliveriesFragment : Fragment() {
 
     private fun showSchedulePickupDialog() {
         val context = context ?: return
-        val builder = android.app.AlertDialog.Builder(context)
+        val builder = AlertDialog.Builder(context)
         builder.setTitle("Schedule Pickup")
 
-        val layout = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(32, 16, 32, 16)
         }
 
-        val inputOrderId = android.widget.EditText(context).apply { hint = "Order ID (e.g. ORD-101)" }
-        val inputDriver = android.widget.EditText(context).apply { hint = "Driver Name" }
-        val inputDate = android.widget.EditText(context).apply { hint = "Dispatch Date (YYYY-MM-DD)" }
-        val inputDest = android.widget.EditText(context).apply { hint = "Destination Address" }
-        val inputNotes = android.widget.EditText(context).apply { hint = "Notes" }
+        val inputOrderId = EditText(context).apply { hint = "Order ID (e.g. ORD-101)" }
+        val inputDriver = EditText(context).apply { hint = "Driver / Truck Name" }
+        val inputDate = EditText(context).apply { hint = "Dispatch Date (YYYY-MM-DD)" }
+        val inputDest = EditText(context).apply { hint = "Destination Address" }
+        val inputNotes = EditText(context).apply { hint = "Special Access Notes" }
 
         layout.addView(inputOrderId)
         layout.addView(inputDriver)
@@ -76,14 +82,13 @@ class DeliveriesFragment : Fragment() {
 
     private fun schedulePickup(orderId: String, driverName: String, dispatchDate: String, destination: String, notes: String) {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
-        if (token.isNullOrEmpty()) return
+        val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.schedulePickup(
                     "Bearer $token",
-                    com.example.secureafenceadministrator.data.model.SchedulePickupRequest(
+                    SchedulePickupRequest(
                         orderId = orderId,
                         driverName = driverName,
                         dispatchDate = dispatchDate,
@@ -105,11 +110,7 @@ class DeliveriesFragment : Fragment() {
 
     private fun loadDeliveries() {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
-        if (token.isNullOrEmpty()) {
-            com.example.secureafenceadministrator.data.network.SessionManager.clearSession(context)
-            return
-        }
+        val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
@@ -119,15 +120,80 @@ class DeliveriesFragment : Fragment() {
                     val adapter = GenericAdapter(
                         shipments,
                         titleProvider = { "${it.type} #${it.id}" },
-                        subtitleProvider = { "Dest: ${it.destination}\nDate: ${it.dispatchDate}" },
-                        statusProvider = { "Status: ${it.status}" }
+                        subtitleProvider = { "Driver: ${it.driverName}\nDest: ${it.destination}\nDate: ${it.dispatchDate}" },
+                        statusProvider = { "Status: ${it.status}" },
+                        onItemClick = { showShipmentDetailsDialog(it) }
                     )
                     binding.recyclerViewDeliveries.adapter = adapter
                 } else if (response.code() == 401) {
                     Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
-                    com.example.secureafenceadministrator.data.network.SessionManager.clearSession(context)
+                    SessionManager.clearSession(context)
                 } else {
                     Toast.makeText(context, "Failed to load deliveries", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showShipmentDetailsDialog(shipment: Shipment) {
+        val context = context ?: return
+        val details = """
+            Type: ${shipment.type}
+            Order Ref: ${shipment.orderId}
+            Driver / Fleet Truck: ${shipment.driverName}
+            Dispatch Date: ${shipment.dispatchDate}
+            Destination: ${shipment.destination}
+            Status: ${shipment.status}
+            Notes: ${shipment.notes ?: "None"}
+        """.trimIndent()
+
+        AlertDialog.Builder(context)
+            .setTitle("Shipment ${shipment.id}")
+            .setMessage(details)
+            .setPositiveButton("Update Status") { _, _ -> showUpdateStatusDialog(shipment) }
+            .setNegativeButton("Assign Driver") { _, _ -> showAssignDriverDialog(shipment) }
+            .setNeutralButton("Close", null)
+            .show()
+    }
+
+    private fun showUpdateStatusDialog(shipment: Shipment) {
+        val context = context ?: return
+        val options = arrayOf("Scheduled", "In Route", "Delivered", "Returned")
+        AlertDialog.Builder(context)
+            .setTitle("Update Shipment Status")
+            .setItems(options) { _, which ->
+                val newStatus = options[which]
+                updateShipment(shipment.id, ShipmentUpdateRequest(status = newStatus))
+            }
+            .show()
+    }
+
+    private fun showAssignDriverDialog(shipment: Shipment) {
+        val context = context ?: return
+        val drivers = arrayOf("Truck 1 - Mike", "Truck 2 - Dave", "Truck 3 - Alex", "Unassigned Dispatcher")
+        AlertDialog.Builder(context)
+            .setTitle("Assign Driver / Truck")
+            .setItems(drivers) { _, which ->
+                val selectedDriver = drivers[which]
+                updateShipment(shipment.id, ShipmentUpdateRequest(driverName = selectedDriver))
+            }
+            .show()
+    }
+
+    private fun updateShipment(shipmentId: String, request: ShipmentUpdateRequest) {
+        val context = context ?: return
+        val token = SessionManager.getToken(context) ?: return
+
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.instance.updateShipment("Bearer $token", shipmentId, request)
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Shipment updated successfully", Toast.LENGTH_SHORT).show()
+                    loadDeliveries()
+                } else {
+                    Toast.makeText(context, "Failed to update shipment", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()

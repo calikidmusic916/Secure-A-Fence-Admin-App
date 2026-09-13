@@ -113,10 +113,10 @@ data class StatusUpdateRequest(
 )
 
 data class ShipmentUpdateRequest(
-    val driverName: String?,
-    val status: String?,
-    val dispatchDate: String?,
-    val notes: String?
+    val driverName: String? = null,
+    val status: String? = null,
+    val dispatchDate: String? = null,
+    val notes: String? = null
 )
 
 data class ExtendRentalRequest(
