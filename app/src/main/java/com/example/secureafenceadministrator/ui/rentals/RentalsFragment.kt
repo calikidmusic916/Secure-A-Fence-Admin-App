@@ -1,15 +1,19 @@
 package com.example.secureafenceadministrator.ui.rentals
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.secureafenceadministrator.data.network.ApiClient
+import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.FragmentRentalsBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
@@ -93,12 +97,63 @@ class RentalsFragment : Fragment() {
 
         builder.setMessage(detailText.toString())
 
-        builder.setPositiveButton("Extend Rental Date") { _, _ ->
-            showChangeEndDateDialog(rental)
+        val options = arrayOf("Extend Rental Date", "📍 Open Google Maps Navigation", "📥 Check-In Equipment Return")
+        builder.setItems(options) { _, which ->
+            when (which) {
+                0 -> showChangeEndDateDialog(rental)
+                1 -> openGoogleMapsNavigation(rental.jobsiteAddress)
+                2 -> checkinRental(rental.id)
+            }
         }
 
-        builder.setNegativeButton("Close", null)
+        builder.setPositiveButton("Close", null)
         builder.show()
+    }
+
+    private fun openGoogleMapsNavigation(destination: String) {
+        val context = context ?: return
+        try {
+            val uri = Uri.parse("geo:0,0?q=${Uri.encode(destination)}")
+            val mapIntent = Intent(Intent.ACTION_VIEW, uri)
+            mapIntent.setPackage("com.google.android.apps.maps")
+            if (mapIntent.resolveActivity(context.packageManager) != null) {
+                startActivity(mapIntent)
+            } else {
+                val browserIntent = Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(destination)}")
+                )
+                startActivity(browserIntent)
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not open Google Maps: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun checkinRental(rentalId: String) {
+        val context = context ?: return
+        val token = SessionManager.getToken(context) ?: return
+
+        AlertDialog.Builder(context)
+            .setTitle("Check-In Equipment Return")
+            .setMessage("Are you sure you want to check in rental $rentalId? Equipment will be marked returned and restored to warehouse stock.")
+            .setPositiveButton("Confirm Check-In") { _, _ ->
+                lifecycleScope.launch {
+                    try {
+                        val response = ApiClient.instance.checkinRental("Bearer $token", rentalId)
+                        if (response.isSuccessful) {
+                            Toast.makeText(context, "Rental checked in and equipment restored!", Toast.LENGTH_SHORT).show()
+                            loadRentals()
+                        } else {
+                            Toast.makeText(context, "Failed to check in rental", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showChangeEndDateDialog(rental: com.example.secureafenceadministrator.data.model.Rental) {

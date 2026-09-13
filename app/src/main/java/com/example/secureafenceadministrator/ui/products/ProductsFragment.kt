@@ -69,7 +69,7 @@ class ProductsFragment : Fragment() {
                     val adapter = GenericAdapter(
                         products,
                         titleProvider = { it.name },
-                        subtitleProvider = { "Price: $${it.salePrice} | Stock: ${it.inStock}" },
+                        subtitleProvider = { "Buy: $${it.salePrice} | Rent: $${it.rentalPriceMonthly}/mo | Stock: ${it.inStock} ${if (it.type == "panel" || it.type == "accessory") "LF" else "units"}" },
                         statusProvider = { if (it.suspended) "SUSPENDED" else "ACTIVE" },
                         descriptionProvider = { it.description },
                         imageProvider = { it.image },
@@ -90,13 +90,14 @@ class ProductsFragment : Fragment() {
         val builder = AlertDialog.Builder(context)
         builder.setTitle(product.name)
         
+        val unitLabel = if (product.type == "panel" || product.type == "accessory") "LF" else "units"
         val details = """
             Category: ${product.category}
             Type: ${product.type}
             Sale Price: $${product.salePrice}
             Rental Price: $${product.rentalPriceMonthly}/mo
-            Stock: ${product.inStock}
-            Rented: ${product.rentedCount}
+            Stock: ${product.inStock} $unitLabel
+            Rented Out: ${product.rentedCount} $unitLabel
             Rental Catalog: ${if (product.isRental) "Yes" else "No"}
             Purchase Catalog: ${if (product.isPurchase) "Yes" else "No"}
             Status: ${if (product.suspended) "Suspended" else "Active"}

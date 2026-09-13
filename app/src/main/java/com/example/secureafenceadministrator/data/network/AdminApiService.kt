@@ -71,6 +71,12 @@ interface AdminApiService {
         @Body request: ExtendRentalRequest
     ): Response<Map<String, Any>>
 
+    @PUT("api/admin/rentals/{id}/checkin")
+    suspend fun checkinRental(
+        @Header("Authorization") token: String,
+        @Path("id") rentalId: String
+    ): Response<Map<String, Any>>
+
     @POST("api/admin/shipments/pickup")
     suspend fun schedulePickup(
         @Header("Authorization") token: String,
