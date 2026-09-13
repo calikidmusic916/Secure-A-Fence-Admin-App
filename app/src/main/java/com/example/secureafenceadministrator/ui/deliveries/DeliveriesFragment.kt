@@ -1,5 +1,7 @@
 package com.example.secureafenceadministrator.ui.deliveries
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -149,13 +151,39 @@ class DeliveriesFragment : Fragment() {
             Notes: ${shipment.notes ?: "None"}
         """.trimIndent()
 
+        val options = arrayOf("Update Status", "Assign Driver / Truck", "📍 Open Google Maps Navigation")
         AlertDialog.Builder(context)
-            .setTitle("Shipment ${shipment.id}")
+            .setTitle("Shipment ${shipment.id} (${shipment.type})")
             .setMessage(details)
-            .setPositiveButton("Update Status") { _, _ -> showUpdateStatusDialog(shipment) }
-            .setNegativeButton("Assign Driver") { _, _ -> showAssignDriverDialog(shipment) }
-            .setNeutralButton("Close", null)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showUpdateStatusDialog(shipment)
+                    1 -> showAssignDriverDialog(shipment)
+                    2 -> openGoogleMapsNavigation(shipment.destination)
+                }
+            }
+            .setPositiveButton("Close", null)
             .show()
+    }
+
+    private fun openGoogleMapsNavigation(destination: String) {
+        val context = context ?: return
+        try {
+            val uri = Uri.parse("geo:0,0?q=${Uri.encode(destination)}")
+            val mapIntent = Intent(Intent.ACTION_VIEW, uri)
+            mapIntent.setPackage("com.google.android.apps.maps")
+            if (mapIntent.resolveActivity(context.packageManager) != null) {
+                startActivity(mapIntent)
+            } else {
+                val browserIntent = Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(destination)}")
+                )
+                startActivity(browserIntent)
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not open Google Maps: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showUpdateStatusDialog(shipment: Shipment) {
