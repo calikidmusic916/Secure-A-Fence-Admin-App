@@ -103,5 +103,13 @@
             android:text="Show in Rental Catalog"
             android:checked="true" />
 
+        <com.google.android.material.checkbox.MaterialCheckBox
+            android:id="@+id/cb_is_purchase"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Show in Purchase Catalog"
+            android:checked="true" />
+
     </LinearLayout>
 </ScrollView>

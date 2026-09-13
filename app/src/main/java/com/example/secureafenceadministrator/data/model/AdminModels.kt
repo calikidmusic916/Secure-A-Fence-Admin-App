@@ -177,5 +177,6 @@ data class Product(
     val image: String,
     val specs: String,
     val suspended: Boolean = false,
-    val isRental: Boolean = true
+    val isRental: Boolean = true,
+    val isPurchase: Boolean = true
 )

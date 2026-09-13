@@ -98,6 +98,7 @@ class ProductsFragment : Fragment() {
             Stock: ${product.inStock}
             Rented: ${product.rentedCount}
             Rental Catalog: ${if (product.isRental) "Yes" else "No"}
+            Purchase Catalog: ${if (product.isPurchase) "Yes" else "No"}
             Status: ${if (product.suspended) "Suspended" else "Active"}
             
             Description: ${product.description}
@@ -169,6 +170,7 @@ class ProductsFragment : Fragment() {
         val etDescription = view.findViewById<EditText>(R.id.et_description)
         val etSpecs = view.findViewById<EditText>(R.id.et_specs)
         val cbIsRental = view.findViewById<CheckBox>(R.id.cb_is_rental)
+        val cbIsPurchase = view.findViewById<CheckBox>(R.id.cb_is_purchase)
         val spType = view.findViewById<Spinner>(R.id.sp_product_type)
         ivPreview = view.findViewById(R.id.iv_product_preview)
         val btnUpload = view.findViewById<Button>(R.id.btn_upload_image)
@@ -187,7 +189,9 @@ class ProductsFragment : Fragment() {
             etDescription.setText(it.description)
             etSpecs.setText(it.specs)
             cbIsRental.isChecked = it.isRental
-            spType.setSelection(types.indexOf(it.type))
+            cbIsPurchase.isChecked = it.isPurchase
+            val typeIndex = types.indexOf(it.type)
+            if (typeIndex >= 0) spType.setSelection(typeIndex)
             
             if (!it.image.isNullOrEmpty()) {
                 val fullUrl = if (it.image.startsWith("/")) "https://secure-a-fence-backend.onrender.com${it.image}" else it.image
@@ -204,12 +208,23 @@ class ProductsFragment : Fragment() {
             val pName = etName.text.toString()
             if (pName.isEmpty()) return@setPositiveButton
 
+            val imageToUpload = selectedImageUri
+            val initialImage = currentImageUrl
+            selectedImageUri = null
+            currentImageUrl = null
+
             lifecycleScope.launch {
-                var finalImageUrl = currentImageUrl ?: "/assets/panel.png"
+                val selectedType = spType.selectedItem.toString()
+                var finalImageUrl = initialImage ?: when (selectedType) {
+                    "stand" -> "/assets/stand.svg"
+                    "clip" -> "/assets/clip.svg"
+                    "accessory" -> "/assets/privacy_screen.svg"
+                    else -> "/assets/panel.svg"
+                }
                 
-                selectedImageUri?.let { uri ->
+                imageToUpload?.let { uri ->
                     val uploadedUrl = uploadImage(uri)
-                    if (uploadedUrl != null) {
+                    if (!uploadedUrl.isNullOrEmpty()) {
                         finalImageUrl = uploadedUrl
                     }
                 }
@@ -218,7 +233,7 @@ class ProductsFragment : Fragment() {
                     id = product?.id,
                     name = pName,
                     category = "sales",
-                    type = spType.selectedItem.toString(),
+                    type = selectedType,
                     salePrice = etSalePrice.text.toString().toDoubleOrNull() ?: 0.0,
                     rentalPriceMonthly = etRentalPrice.text.toString().toDoubleOrNull() ?: 0.0,
                     inStock = etStock.text.toString().toIntOrNull() ?: 0,
@@ -227,12 +242,16 @@ class ProductsFragment : Fragment() {
                     image = finalImageUrl,
                     specs = etSpecs.text.toString(),
                     suspended = product?.suspended ?: false,
-                    isRental = cbIsRental.isChecked
+                    isRental = cbIsRental.isChecked,
+                    isPurchase = cbIsPurchase.isChecked
                 )
                 saveProduct(newProduct)
             }
         }
-        builder.setNegativeButton("Cancel", null)
+        builder.setNegativeButton("Cancel") { _, _ ->
+            selectedImageUri = null
+            currentImageUrl = null
+        }
         builder.show()
     }
 
