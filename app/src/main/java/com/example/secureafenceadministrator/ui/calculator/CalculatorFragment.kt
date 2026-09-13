@@ -65,6 +65,7 @@ class CalculatorFragment : Fragment() {
 
     private fun runCalculator() {
         val L = binding.etLinearFeet.text.toString().toDoubleOrNull() ?: 0.0
+        val W = binding.etPanelWidth.text.toString().toDoubleOrNull() ?: 12.0
         val M = binding.etMonths.text.toString().toIntOrNull() ?: 1
         val P = if (binding.cbPrivacyScreen.isChecked) 1 else 0
         val G = binding.etGates.text.toString().toIntOrNull() ?: 0
@@ -93,8 +94,9 @@ class CalculatorFragment : Fragment() {
         // Minimum Order Logic
         val finalTotal = if (rawTotal < 300) 300.0 else rawTotal
 
-        // Equipment breakdown based on 6x12 panels (12 feet width)
-        val panelsCount = ceil(L / 12.0).toInt()
+        // Equipment breakdown based on user-entered panel width in Ft (W)
+        val panelWidth = if (W > 0) W else 12.0
+        val panelsCount = ceil(L / panelWidth).toInt()
         val standsCount = if (panelsCount > 0) panelsCount + 1 else 0
         val clipsCount = panelsCount
 
