@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/tvCheckoutTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🛒 Review Order &amp; Checkout"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Customer Information Section Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="👤 Customer &amp; Delivery Information"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="6dp"/>
+
+        <EditText
+            android:id="@+id/etCheckoutCustomerName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Customer Full Name (e.g. John Doe)"
+            android:inputType="textPersonName"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp"/>
+
+        <EditText
+            android:id="@+id/etCheckoutCompany"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Company Name (Optional)"
+            android:inputType="text"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="4dp">
+
+            <EditText
+                android:id="@+id/etCheckoutPhone"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Phone Number"
+                android:inputType="phone"
+                android:textSize="14sp"
+                android:layout_marginEnd="4dp"/>
+
+            <EditText
+                android:id="@+id/etCheckoutEmail"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Email Address"
+                android:inputType="textEmailAddress"
+                android:textSize="14sp"/>
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/etCheckoutDeliveryAddress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Jobsite / Delivery Address"
+            android:inputType="textPostalAddress"
+            android:textSize="14sp"
+            android:layout_marginBottom="12dp"/>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#DDDDDD"
+            android:layout_marginVertical="8dp"/>
+
+        <!-- Order Items Section Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📦 Order Line Items &amp; Quantities"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tvCheckoutItemsList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="• 50x Refurbished 6x12 Panel @ $65.00 = $3,250.00"
+            android:textSize="13sp"
+            android:textColor="@android:color/black"
+            android:background="#F5F5F5"
+            android:padding="10dp"
+            android:layout_marginBottom="12dp"/>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#DDDDDD"
+            android:layout_marginVertical="8dp"/>
+
+        <!-- Financial Summary -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="💵 Order Total Breakdown"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tvCheckoutSubtotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Subtotal: $0.00"
+            android:textSize="13sp"
+            android:layout_marginBottom="2dp"/>
+
+        <TextView
+            android:id="@+id/tvCheckoutDeliveryFee"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Delivery Transport Fee: $50.00"
+            android:textSize="13sp"
+            android:layout_marginBottom="2dp"/>
+
+        <TextView
+            android:id="@+id/tvCheckoutTax"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tax (8%): $0.00"
+            android:textSize="13sp"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tvCheckoutGrandTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Grand Total: $0.00"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- Place Order & Dispatch Button -->
+        <Button
+            android:id="@+id/btnSubmitOrderAndDispatch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🚀 Place Order &amp; Add to Shipping Queue"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:padding="12dp"/>
+
+    </LinearLayout>
+</ScrollView>

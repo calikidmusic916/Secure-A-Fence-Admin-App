@@ -17,8 +17,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="Email Address"
+        android:hint="Email Address (Account Username)"
         android:inputType="textEmailAddress" />
+
+    <EditText
+        android:id="@+id/et_cust_password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Account Password"
+        android:inputType="textPassword" />
 
     <EditText
         android:id="@+id/et_cust_company"

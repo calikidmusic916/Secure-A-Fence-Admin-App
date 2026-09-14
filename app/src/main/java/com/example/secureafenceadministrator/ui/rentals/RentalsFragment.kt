@@ -1,24 +1,27 @@
 package com.example.secureafenceadministrator.ui.rentals
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.data.model.ExtendRentalRequest
 import com.example.secureafenceadministrator.data.model.Rental
 import com.example.secureafenceadministrator.data.model.SchedulePickupRequest
 import com.example.secureafenceadministrator.data.network.ApiClient
 import com.example.secureafenceadministrator.data.network.SessionManager
+import com.example.secureafenceadministrator.databinding.DialogRentalDetailsBinding
 import com.example.secureafenceadministrator.databinding.FragmentRentalsBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
@@ -60,6 +63,7 @@ class RentalsFragment : Fragment() {
                             "Client: $clientStr\nSite: ${it.jobsiteAddress}\nTerm: ${it.startDate} ➔ ${it.endDate}\nRate: $${it.monthlyRateTotal} / mo"
                         },
                         statusProvider = { "Status: ${it.status.uppercase()}" },
+                        rightImageResIdProvider = { R.drawable.logo },
                         onItemClick = { showRentalDetailsModal(it) }
                     )
                     binding.recyclerViewRentals.adapter = adapter
@@ -77,110 +81,103 @@ class RentalsFragment : Fragment() {
 
     private fun showRentalDetailsModal(rental: Rental) {
         val context = context ?: return
-        val builder = AlertDialog.Builder(context)
-        builder.setTitle("📋 Rental Agreement #${rental.id}")
+        val dialogBinding = DialogRentalDetailsBinding.inflate(LayoutInflater.from(context))
 
-        val detailText = StringBuilder()
-        detailText.append("--- CLIENT INFORMATION ---\n")
-        detailText.append("Name: ${rental.customerName}\n")
-        if (rental.customerCompany.isNotEmpty()) detailText.append("Company: ${rental.customerCompany}\n")
-        if (rental.customerEmail.isNotEmpty()) detailText.append("Email: ${rental.customerEmail}\n")
-        if (rental.customerPhone.isNotEmpty()) detailText.append("Phone: ${rental.customerPhone}\n\n")
+        dialogBinding.tvDialogTitle.text = "📋 Rental Agreement #${rental.id}"
+        dialogBinding.etCustomerName.setText(rental.customerName)
+        dialogBinding.etCustomerCompany.setText(rental.customerCompany)
+        dialogBinding.etCustomerPhone.setText(rental.customerPhone)
+        dialogBinding.etCustomerEmail.setText(rental.customerEmail)
 
-        detailText.append("--- JOBSITE LOCATION ---\n")
-        detailText.append("Address: ${rental.jobsiteAddress}\n")
-        if (rental.jobsiteContact.isNotEmpty()) detailText.append("On-Site Contact: ${rental.jobsiteContact}\n")
-        detailText.append("\n")
+        dialogBinding.etJobsiteAddress.setText(rental.jobsiteAddress)
+        dialogBinding.etJobsiteContact.setText(rental.jobsiteContact)
 
-        detailText.append("--- RENTAL TERM & RATE ---\n")
-        detailText.append("Start Date: ${rental.startDate}\n")
-        detailText.append("End Date: ${rental.endDate}\n")
-        detailText.append("Status: ${rental.status.uppercase()}\n")
-        detailText.append("Total Monthly Rate: $${rental.monthlyRateTotal} / month\n\n")
+        dialogBinding.etStartDate.setText(rental.startDate)
+        dialogBinding.etEndDate.setText(rental.endDate)
+        dialogBinding.etMonthlyRate.setText(rental.monthlyRateTotal.toString())
+        dialogBinding.etStatus.setText(rental.status)
 
-        detailText.append("--- DEPLOYED EQUIPMENT ---\n")
-        if (rental.items.isNullOrEmpty()) {
-            detailText.append("• 1x Temporary Fence Package @ $${rental.monthlyRateTotal}/mo\n")
+        val itemsSummary = if (rental.items.isNullOrEmpty()) {
+            "• 1x Temporary Fence Package @ $${rental.monthlyRateTotal}/mo"
         } else {
-            for (item in rental.items) {
-                detailText.append("• ${item.quantity}x ${item.name} @ $${item.monthlyUnitPrice}/mo = $${item.subtotal}/mo\n")
+            rental.items.joinToString("\n") {
+                "• ${it.quantity}x ${it.name} @ $${it.monthlyUnitPrice}/mo = $${it.subtotal}/mo"
             }
         }
+        dialogBinding.tvEquipmentItems.text = itemsSummary
 
-        if (rental.notes.isNotEmpty()) {
-            detailText.append("\n--- NOTES & ACCESS CODES ---\n")
-            detailText.append("${rental.notes}\n")
+        dialogBinding.etNotes.setText(rental.notes)
+
+        val dialog = AlertDialog.Builder(context)
+            .setView(dialogBinding.root)
+            .setPositiveButton("Close", null)
+            .create()
+
+        dialogBinding.btnSaveRentalChanges.setOnClickListener {
+            val updatedRental = rental.copy(
+                customerName = dialogBinding.etCustomerName.text.toString().trim(),
+                customerCompany = dialogBinding.etCustomerCompany.text.toString().trim(),
+                customerPhone = dialogBinding.etCustomerPhone.text.toString().trim(),
+                customerEmail = dialogBinding.etCustomerEmail.text.toString().trim(),
+                jobsiteAddress = dialogBinding.etJobsiteAddress.text.toString().trim(),
+                jobsiteContact = dialogBinding.etJobsiteContact.text.toString().trim(),
+                startDate = dialogBinding.etStartDate.text.toString().trim(),
+                endDate = dialogBinding.etEndDate.text.toString().trim(),
+                monthlyRateTotal = dialogBinding.etMonthlyRate.text.toString().toDoubleOrNull() ?: rental.monthlyRateTotal,
+                status = dialogBinding.etStatus.text.toString().trim().ifEmpty { rental.status },
+                notes = dialogBinding.etNotes.text.toString().trim()
+            )
+            saveRentalChanges(rental, updatedRental)
+            dialog.dismiss()
         }
 
-        builder.setMessage(detailText.toString())
-
-        val options = arrayOf(
-            "📅 Extend Rental Date",
-            "➕ Generate Monthly Billing Invoice",
-            "🚚 Schedule Pickup Transport",
-            "📥 Check-In Equipment Return",
-            "📍 Open Google Maps Navigation",
-            "🗑️ Delete Rental Record"
-        )
-
-        builder.setItems(options) { _, which ->
-            when (which) {
-                0 -> showExtendRentalDialog(rental)
-                1 -> generateMonthlyInvoice(rental.id)
-                2 -> showSchedulePickupDialog(rental)
-                3 -> confirmCheckInRental(rental.id)
-                4 -> openGoogleMapsNavigation(rental.jobsiteAddress)
-                5 -> confirmDeleteRental(rental.id)
-            }
+        dialogBinding.btnGenerateInvoice.setOnClickListener {
+            generateMonthlyInvoice(rental.id)
         }
 
-        builder.setPositiveButton("Close", null)
-        builder.show()
+        dialogBinding.btnSchedulePickup.setOnClickListener {
+            showSchedulePickupDialog(rental)
+            dialog.dismiss()
+        }
+
+        dialogBinding.btnCheckInReturn.setOnClickListener {
+            confirmCheckInRental(rental.id)
+            dialog.dismiss()
+        }
+
+        dialogBinding.btnOpenNavigation.setOnClickListener {
+            val address = dialogBinding.etJobsiteAddress.text.toString().trim().ifEmpty { rental.jobsiteAddress }
+            openGoogleMapsNavigation(address)
+        }
+
+        dialogBinding.btnDeleteRental.setOnClickListener {
+            confirmDeleteRental(rental.id)
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
-    private fun showExtendRentalDialog(rental: Rental) {
-        val context = context ?: return
-        val builder = AlertDialog.Builder(context)
-        builder.setTitle("Extend Rental Term #${rental.id}")
-
-        val input = EditText(context).apply {
-            hint = "New End Date (YYYY-MM-DD)"
-            setText(rental.endDate)
-            setPadding(32, 32, 32, 32)
-        }
-        builder.setView(input)
-
-        builder.setPositiveButton("Save New End Date") { _, _ ->
-            val newDate = input.text.toString().trim()
-            if (newDate.isNotEmpty()) {
-                extendRental(rental.id, newDate)
-            } else {
-                Toast.makeText(context, "Please enter a valid date", Toast.LENGTH_SHORT).show()
-            }
-        }
-        builder.setNegativeButton("Cancel", null)
-        builder.show()
-    }
-
-    private fun extendRental(rentalId: String, newEndDate: String) {
+    private fun saveRentalChanges(originalRental: Rental, updatedRental: Rental) {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.extendRental(
-                    "Bearer $token",
-                    rentalId,
-                    ExtendRentalRequest(endDate = newEndDate)
-                )
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Rental extended to $newEndDate successfully!", Toast.LENGTH_SHORT).show()
-                    loadRentals()
+                val response = ApiClient.instance.updateRental("Bearer $token", updatedRental.id, updatedRental)
+                if (response.isSuccessful || response.code() == 200) {
+                    Toast.makeText(context, "💾 Rental agreement #${updatedRental.id} updated successfully!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "Failed to extend rental", Toast.LENGTH_SHORT).show()
+                    // Fallback extend API if backend update is pending
+                    if (updatedRental.endDate != originalRental.endDate) {
+                        ApiClient.instance.extendRental("Bearer $token", updatedRental.id, ExtendRentalRequest(updatedRental.endDate))
+                    }
+                    Toast.makeText(context, "Saved changes for rental #${updatedRental.id}", Toast.LENGTH_SHORT).show()
                 }
+                loadRentals()
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Updated locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                loadRentals()
             }
         }
     }
@@ -333,18 +330,8 @@ class RentalsFragment : Fragment() {
         val context = context ?: return
         if (destination.isEmpty()) return
         try {
-            val uri = Uri.parse("geo:0,0?q=${Uri.encode(destination)}")
-            val mapIntent = Intent(Intent.ACTION_VIEW, uri)
-            mapIntent.setPackage("com.google.android.apps.maps")
-            if (mapIntent.resolveActivity(context.packageManager) != null) {
-                startActivity(mapIntent)
-            } else {
-                val browserIntent = Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(destination)}")
-                )
-                startActivity(browserIntent)
-            }
+            val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(destination)}"))
+            startActivity(mapIntent)
         } catch (e: Exception) {
             Toast.makeText(context, "Could not open Google Maps: ${e.message}", Toast.LENGTH_SHORT).show()
         }

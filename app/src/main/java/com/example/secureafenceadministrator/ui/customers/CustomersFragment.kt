@@ -13,11 +13,17 @@ import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.data.model.CreateCustomerRequest
 import com.example.secureafenceadministrator.data.model.Customer
 import com.example.secureafenceadministrator.data.model.Jobsite
+import com.example.secureafenceadministrator.data.model.Order
+import com.example.secureafenceadministrator.data.model.Rental
 import com.example.secureafenceadministrator.data.network.ApiClient
 import com.example.secureafenceadministrator.data.network.SessionManager
+import com.example.secureafenceadministrator.databinding.DialogCustomerDetailsBinding
 import com.example.secureafenceadministrator.databinding.FragmentCustomersBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class CustomersFragment : Fragment() {
 
@@ -46,69 +52,205 @@ class CustomersFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.getCustomers("Bearer $token")
-                if (response.isSuccessful && response.body() != null) {
-                    val customers = response.body()!!
-                    val adapter = GenericAdapter(
-                        customers,
-                        titleProvider = { it.name.ifEmpty { "Unnamed Customer" } },
-                        subtitleProvider = { 
-                            val taxStatus = if (it.isTaxable) "Taxable (8%)" else "Tax Exempt"
-                            "Company: ${it.company ?: "N/A"}\nBusiness Address: ${it.businessAddress ?: "N/A"}\nEmail: ${it.email}\nPhone: ${it.phone ?: "N/A"}\nTax: $taxStatus" 
-                        },
-                        statusProvider = { 
-                            val jobsCount = it.jobsites?.size ?: 0
-                            val roleText = it.role.ifEmpty { "customer" }.uppercase()
-                            "Role: $roleText | $jobsCount Jobsites" 
-                        },
-                        onItemClick = { showCustomerDetails(it) }
-                    )
-                    binding.recyclerViewCustomers.adapter = adapter
-                } else {
-                    Toast.makeText(context, "Failed to load customers", Toast.LENGTH_SHORT).show()
-                }
+                val customersResponse = ApiClient.instance.getCustomers("Bearer $token")
+                val rentalsResponse = ApiClient.instance.getRentals("Bearer $token")
+                val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
+
+                val customers = if (customersResponse.isSuccessful && customersResponse.body() != null) customersResponse.body()!! else emptyList()
+                val rentals = if (rentalsResponse.isSuccessful && rentalsResponse.body() != null) rentalsResponse.body()!! else emptyList()
+                val orders = if (salesResponse.isSuccessful && salesResponse.body() != null) salesResponse.body()!! else emptyList()
+
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+                val adapter = GenericAdapter(
+                    customers,
+                    titleProvider = { it.name.ifEmpty { "Unnamed Customer" } },
+                    subtitleProvider = { customer ->
+                        val custRentals = rentals.filter {
+                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
+                        }
+                        val custOrders = orders.filter {
+                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
+                        }
+
+                        val unpaidOrdersTotal = custOrders.filter {
+                            !it.paymentStatus.equals("Paid", ignoreCase = true)
+                        }.sumOf { it.totalAmount }
+
+                        val activeRentalsTotal = custRentals.filter {
+                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
+                        }.sumOf { it.monthlyRateTotal }
+
+                        val totalBalance = unpaidOrdersTotal + activeRentalsTotal
+
+                        val activeRentals = custRentals.filter {
+                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
+                        }
+
+                        val rentalReturnStatus = if (activeRentals.isEmpty()) {
+                            "No Active Rentals"
+                        } else {
+                            val overdueRental = activeRentals.find { it.endDate.isNotEmpty() && it.endDate < todayStr }
+                            if (overdueRental != null) {
+                                "⚠️ OVERDUE (Return Date: ${overdueRental.endDate})"
+                            } else {
+                                val nearestReturn = activeRentals.minByOrNull { it.endDate }?.endDate ?: "N/A"
+                                "✅ CURRENT (Next Return: $nearestReturn)"
+                            }
+                        }
+
+                        val balanceText = if (totalBalance > 0) "$${String.format(Locale.US, "%.2f", totalBalance)} DUE" else "$0.00 (Paid in Full)"
+                        val companyStr = if (!customer.company.isNullOrEmpty()) "Company: ${customer.company}\n" else ""
+
+                        "${companyStr}Email: ${customer.email} | Phone: ${customer.phone ?: "N/A"}\n💰 Account Balance: $balanceText\n📅 Rental Return: $rentalReturnStatus"
+                    },
+                    statusProvider = { customer ->
+                        val custRentals = rentals.filter {
+                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
+                        }
+                        val custOrders = orders.filter {
+                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
+                        }
+
+                        val unpaidOrdersTotal = custOrders.filter {
+                            !it.paymentStatus.equals("Paid", ignoreCase = true)
+                        }.sumOf { it.totalAmount }
+
+                        val activeRentalsTotal = custRentals.filter {
+                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
+                        }.sumOf { it.monthlyRateTotal }
+
+                        val totalBalance = unpaidOrdersTotal + activeRentalsTotal
+
+                        val activeRentals = custRentals.filter {
+                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
+                        }
+                        val isOverdue = activeRentals.any { !it.endDate.isNullOrEmpty() && it.endDate < todayStr }
+
+                        when {
+                            isOverdue -> "⚠️ OVERDUE"
+                            totalBalance > 0 -> "💳 $" + String.format(Locale.US, "%.2f", totalBalance) + " DUE"
+                            else -> "✅ CURRENT"
+                        }
+                    },
+                    rightImageResIdProvider = { R.drawable.logo },
+                    onItemClick = { showCustomerDetailsWithFinancials(it, rentals, orders, todayStr) }
+                )
+                binding.recyclerViewCustomers.adapter = adapter
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun showCustomerDetails(customer: Customer) {
+    private fun showCustomerDetailsWithFinancials(
+        customer: Customer,
+        allRentals: List<Rental>,
+        allOrders: List<Order>,
+        todayStr: String
+    ) {
         val context = context ?: return
-        val builder = AlertDialog.Builder(context)
-        builder.setTitle(customer.name.ifEmpty { "Customer Details" })
+        val dialogBinding = DialogCustomerDetailsBinding.inflate(LayoutInflater.from(context))
 
-        val taxStatus = if (customer.isTaxable) "Taxable (8% Sales Tax)" else "Tax Exempt (0% Tax)"
-        val jobsitesList = customer.jobsites
+        dialogBinding.tvCustomerDialogTitle.text = "👤 ${customer.name.ifEmpty { "Customer Account" }}"
+        dialogBinding.etCustomerName.setText(customer.name)
+        dialogBinding.etCustomerCompany.setText(customer.company)
+        dialogBinding.etCustomerPhone.setText(customer.phone)
+        dialogBinding.etCustomerEmail.setText(customer.email)
+        dialogBinding.etBusinessAddress.setText(customer.businessAddress)
+        dialogBinding.cbCustomerTaxable.isChecked = customer.isTaxable
 
-        var jobsitesSummary = "\n--- JOBSITES (${jobsitesList?.size ?: 0}) ---"
-        if (!jobsitesList.isNullOrEmpty()) {
-            jobsitesList.forEach { j ->
-                val activeCount = j.activeRentals?.size ?: 0
-                jobsitesSummary += "\n• ${j.name} (${j.address})\n  Contact: ${j.contactName ?: "N/A"} (${j.contactPhone ?: "N/A"})\n  Distance: ${j.deliveryDistanceMiles} mi | Active Rentals: $activeCount\n  Instructions: ${j.specialInstructions ?: "None"}\n"
-            }
-        } else {
-            jobsitesSummary += "\nNo jobsites created yet."
+        val roles = arrayOf("customer", "admin")
+        dialogBinding.spCustomerRole.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, roles)
+        val roleIdx = roles.indexOf(customer.role)
+        if (roleIdx >= 0) dialogBinding.spCustomerRole.setSelection(roleIdx)
+
+        val custRentals = allRentals.filter {
+            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
+        }
+        val custOrders = allOrders.filter {
+            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
         }
 
-        val roleText = customer.role.ifEmpty { "customer" }.uppercase()
+        val unpaidOrdersTotal = custOrders.filter {
+            !it.paymentStatus.equals("Paid", ignoreCase = true)
+        }.sumOf { it.totalAmount }
 
-        val details = """
-            Email: ${customer.email}
-            Company: ${customer.company ?: "N/A"}
-            Phone: ${customer.phone ?: "N/A"}
-            Business Address: ${customer.businessAddress ?: "N/A"}
-            Tax Status: $taxStatus
-            Role: $roleText
-            $jobsitesSummary
-        """.trimIndent()
+        val activeRentalsTotal = custRentals.filter {
+            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
+        }.sumOf { it.monthlyRateTotal }
 
-        builder.setMessage(details)
+        val totalBalance = unpaidOrdersTotal + activeRentalsTotal
 
-        builder.setPositiveButton("Edit Customer") { _, _ -> showCustomerDialog(customer) }
-        builder.setNegativeButton("Manage Jobsites") { _, _ -> showJobsitesListDialog(customer) }
-        builder.setNeutralButton("Delete") { _, _ -> confirmDelete(customer) }
-        builder.show()
+        val balanceText = if (totalBalance > 0) {
+            "Account Balance: $" + String.format(Locale.US, "%.2f", totalBalance) + " (PAST DUE / UNPAID)"
+        } else {
+            "Account Balance: $0.00 (Current / Paid in Full)"
+        }
+        dialogBinding.tvAccountBalance.text = balanceText
+
+        var rentalsSummary = ""
+        if (custRentals.isNotEmpty()) {
+            custRentals.forEach { r ->
+                val isOverdue = !r.endDate.isNullOrEmpty() && r.endDate < todayStr
+                val statusBadge = if (isOverdue) "⚠️ OVERDUE" else "✅ CURRENT"
+                rentalsSummary += "• Rental #${r.id} [$statusBadge]\n  Site: ${r.jobsiteAddress}\n  Term: ${r.startDate} ➔ ${r.endDate}\n  Rate: $${r.monthlyRateTotal}/mo | Status: ${r.status}\n\n"
+            }
+        } else {
+            rentalsSummary = "No active rentals deployed for this customer."
+        }
+        dialogBinding.tvCustomerRentalsSummary.text = rentalsSummary.trim()
+
+        val jobsitesList = customer.jobsites
+        val jobsitesSummary = if (!jobsitesList.isNullOrEmpty()) {
+            jobsitesList.joinToString("\n") { "• ${it.name} (${it.address}) - Distance: ${it.deliveryDistanceMiles} mi" }
+        } else {
+            "0 jobsites registered."
+        }
+        dialogBinding.tvCustomerJobsitesSummary.text = jobsitesSummary
+
+        val dialog = AlertDialog.Builder(context)
+            .setView(dialogBinding.root)
+            .setPositiveButton("Close", null)
+            .create()
+
+        dialogBinding.btnSaveCustomerChanges.setOnClickListener {
+            val name = dialogBinding.etCustomerName.text.toString().trim()
+            val email = dialogBinding.etCustomerEmail.text.toString().trim()
+            val password = dialogBinding.etCustomerPassword.text.toString().trim()
+
+            if (name.isEmpty() || email.isEmpty()) {
+                Toast.makeText(context, "Name and Email are required", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val request = CreateCustomerRequest(
+                name = name,
+                email = email,
+                company = dialogBinding.etCustomerCompany.text.toString().trim(),
+                phone = dialogBinding.etCustomerPhone.text.toString().trim(),
+                role = dialogBinding.spCustomerRole.selectedItem.toString(),
+                isTaxable = dialogBinding.cbCustomerTaxable.isChecked,
+                businessAddress = dialogBinding.etBusinessAddress.text.toString().trim(),
+                password = password.ifEmpty { null },
+                jobsites = customer.jobsites
+            )
+
+            saveCustomer(customer.id, request)
+            dialog.dismiss()
+        }
+
+        dialogBinding.btnManageJobsites.setOnClickListener {
+            showJobsitesListDialog(customer)
+            dialog.dismiss()
+        }
+
+        dialogBinding.btnDeleteCustomer.setOnClickListener {
+            confirmDelete(customer)
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
     private fun showJobsitesListDialog(customer: Customer) {
@@ -303,11 +445,12 @@ class CustomersFragment : Fragment() {
     private fun showCustomerDialog(customer: Customer?) {
         val context = context ?: return
         val builder = AlertDialog.Builder(context)
-        builder.setTitle(if (customer == null) "Add Customer" else "Edit Customer")
+        builder.setTitle(if (customer == null) "Add Customer Account" else "Edit Customer Account")
 
         val view = LayoutInflater.from(context).inflate(R.layout.dialog_customer, null)
         val etName = view.findViewById<EditText>(R.id.et_cust_name)
         val etEmail = view.findViewById<EditText>(R.id.et_cust_email)
+        val etPassword = view.findViewById<EditText>(R.id.et_cust_password)
         val etCompany = view.findViewById<EditText>(R.id.et_cust_company)
         val etPhone = view.findViewById<EditText>(R.id.et_cust_phone)
         val etBusinessAddress = view.findViewById<EditText>(R.id.et_cust_business_address)
@@ -329,9 +472,11 @@ class CustomersFragment : Fragment() {
         }
 
         builder.setView(view)
-        builder.setPositiveButton("Save") { _, _ ->
-            val name = etName.text.toString()
-            val email = etEmail.text.toString()
+        builder.setPositiveButton("Save Customer Account") { _, _ ->
+            val name = etName.text.toString().trim()
+            val email = etEmail.text.toString().trim()
+            val password = etPassword.text.toString().trim()
+
             if (name.isEmpty() || email.isEmpty()) {
                 Toast.makeText(context, "Name and Email are required", Toast.LENGTH_SHORT).show()
                 return@setPositiveButton
@@ -340,11 +485,12 @@ class CustomersFragment : Fragment() {
             val request = CreateCustomerRequest(
                 name = name,
                 email = email,
-                company = etCompany.text.toString(),
-                phone = etPhone.text.toString(),
+                company = etCompany.text.toString().trim(),
+                phone = etPhone.text.toString().trim(),
                 role = spRole.selectedItem.toString(),
                 isTaxable = cbIsTaxable.isChecked,
-                businessAddress = etBusinessAddress.text.toString(),
+                businessAddress = etBusinessAddress.text.toString().trim(),
+                password = password.ifEmpty { null },
                 jobsites = customer?.jobsites
             )
 
@@ -367,10 +513,10 @@ class CustomersFragment : Fragment() {
                 }
 
                 if (response.isSuccessful) {
-                    Toast.makeText(context, "Customer saved", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Customer account saved successfully", Toast.LENGTH_SHORT).show()
                     loadCustomers()
                 } else {
-                    Toast.makeText(context, "Failed to save customer", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed to save customer account", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()

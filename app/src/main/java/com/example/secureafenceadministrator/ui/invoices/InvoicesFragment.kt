@@ -1,18 +1,42 @@
 package com.example.secureafenceadministrator.ui.invoices
 
-import android.content.Context
+import android.app.AlertDialog
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import coil.load
+import com.example.secureafenceadministrator.R
+import com.example.secureafenceadministrator.data.model.CreateInvoiceRequest
+import com.example.secureafenceadministrator.data.model.Order
+import com.example.secureafenceadministrator.data.model.OrderItem
+import com.example.secureafenceadministrator.data.model.OrderPaymentUpdateRequest
+import com.example.secureafenceadministrator.data.model.Product
+import com.example.secureafenceadministrator.data.model.SchedulePickupRequest
+import com.example.secureafenceadministrator.data.model.StatusUpdateRequest
 import com.example.secureafenceadministrator.data.network.ApiClient
+import com.example.secureafenceadministrator.data.network.SessionManager
+import com.example.secureafenceadministrator.databinding.DialogCartCheckoutBinding
+import com.example.secureafenceadministrator.databinding.DialogOrderCatalogBinding
 import com.example.secureafenceadministrator.databinding.FragmentInvoicesBinding
+import com.example.secureafenceadministrator.databinding.ItemProductCatalogBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class InvoicesFragment : Fragment() {
 
@@ -34,176 +58,289 @@ class InvoicesFragment : Fragment() {
         }
 
         binding.btnPlaceOrder.setOnClickListener {
-            showPlaceOrderDialog()
+            showCatalogOrderDialog()
         }
     }
 
-    private fun showPlaceOrderDialog() {
+    private fun showCatalogOrderDialog() {
         val context = context ?: return
-        val builder = android.app.AlertDialog.Builder(context)
-        builder.setTitle("Place New Order (With Line Items)")
-
-        val scrollView = android.widget.ScrollView(context)
-        val layout = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(32, 16, 32, 16)
-        }
-
-        val inputCustomer = android.widget.EditText(context).apply { hint = "Customer Name (e.g. John Doe)" }
-        val inputEmail = android.widget.EditText(context).apply { hint = "Customer Email" }
-        val inputAddress = android.widget.EditText(context).apply { hint = "Delivery Address" }
-
-        val typeSpinner = android.widget.Spinner(context).apply {
-            adapter = android.widget.ArrayAdapter(
-                context,
-                android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("Sale Order", "Rental Order")
-            )
-        }
-
-        val tvItemsHeader = android.widget.TextView(context).apply {
-            text = "\nSelect Product Quantities:"
-            android.graphics.Typeface.DEFAULT_BOLD
-        }
-
-        val inputQty6x12 = android.widget.EditText(context).apply {
-            hint = "6'x12' Fence Panels ($65 buy / $15 rent)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-        val inputQty6x10 = android.widget.EditText(context).apply {
-            hint = "6'x10' Fence Panels ($50 buy / $12 rent)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-        val inputQtyStands = android.widget.EditText(context).apply {
-            hint = "Flat Bases / Stands ($10 buy / $3 rent)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-        val inputQtyClips = android.widget.EditText(context).apply {
-            hint = "Panel Clamps / Clips ($5 buy / $1 rent)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-
-        layout.addView(inputCustomer)
-        layout.addView(inputEmail)
-        layout.addView(inputAddress)
-        layout.addView(typeSpinner)
-        layout.addView(tvItemsHeader)
-        layout.addView(inputQty6x12)
-        layout.addView(inputQty6x10)
-        layout.addView(inputQtyStands)
-        layout.addView(inputQtyClips)
-        scrollView.addView(layout)
-        builder.setView(scrollView)
-
-        builder.setPositiveButton("Submit Order") { _, _ ->
-            val customer = inputCustomer.text.toString().trim()
-            val email = inputEmail.text.toString().trim().ifEmpty { "sales@order.com" }
-            val address = inputAddress.text.toString().trim().ifEmpty { "Sacramento Warehouse Pick-up" }
-            val isRental = typeSpinner.selectedItemPosition == 1
-
-            val qty6x12 = inputQty6x12.text.toString().toIntOrNull() ?: 0
-            val qty6x10 = inputQty6x10.text.toString().toIntOrNull() ?: 0
-            val qtyStands = inputQtyStands.text.toString().toIntOrNull() ?: 0
-            val qtyClips = inputQtyClips.text.toString().toIntOrNull() ?: 0
-
-            val items = mutableListOf<com.example.secureafenceadministrator.data.model.OrderItem>()
-            if (qty6x12 > 0) {
-                val price = if (isRental) 15.0 else 65.0
-                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-panel-6x12", "Refurbished Temporary Fence Panel (6' x 12')", price, qty6x12, price * qty6x12))
-            }
-            if (qty6x10 > 0) {
-                val price = if (isRental) 12.0 else 50.0
-                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-panel-6x10", "Refurbished Temporary Fence Panel (6' x 10')", price, qty6x10, price * qty6x10))
-            }
-            if (qtyStands > 0) {
-                val price = if (isRental) 3.0 else 10.0
-                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-stand-sale", "Flat Stand (Standard Tubular Base)", price, qtyStands, price * qtyStands))
-            }
-            if (qtyClips > 0) {
-                val price = if (isRental) 1.0 else 5.0
-                items.add(com.example.secureafenceadministrator.data.model.OrderItem("prod-clip-sale", "Safety Clamp / Panel Connector Clip", price, qtyClips, price * qtyClips))
-            }
-
-            if (customer.isNotEmpty() && items.isNotEmpty()) {
-                placeDetailedOrder(customer, email, address, if (isRental) "rental" else "sale", items)
-            } else {
-                Toast.makeText(context, "Please enter customer name and at least one item quantity", Toast.LENGTH_SHORT).show()
-            }
-        }
-        builder.setNegativeButton("Cancel", null)
-        builder.show()
-    }
-
-    private fun placeDetailedOrder(
-        customerName: String,
-        customerEmail: String,
-        address: String,
-        orderType: String,
-        items: List<com.example.secureafenceadministrator.data.model.OrderItem>
-    ) {
-        val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
-        if (token.isNullOrEmpty()) return
-
-        val subtotal = items.sumOf { it.total }
-        val deliveryFee = if (subtotal > 0) 50.0 else 0.0
-        val tax = Math.round(subtotal * 0.08 * 100.0) / 100.0
-        val totalAmount = subtotal + deliveryFee + tax
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.createOrder(
-                    "Bearer $token",
-                    com.example.secureafenceadministrator.data.model.Order(
-                        id = "ORD-" + (1000..9999).random(),
-                        customerId = "cust-" + System.currentTimeMillis(),
-                        customerName = customerName,
-                        customerCompany = "Direct Client",
-                        customerEmail = customerEmail,
-                        customerPhone = "(279) 261-3890",
-                        orderType = orderType,
-                        items = items,
-                        subtotal = subtotal,
-                        deliveryFee = deliveryFee,
-                        tax = tax,
-                        totalAmount = totalAmount,
-                        status = "Processing",
-                        deliveryAddress = address,
-                        jobsiteContact = customerName,
-                        deliveryDate = today,
-                        createdAt = today,
-                        paymentStatus = "Unpaid",
-                        paymentMethod = "None"
-                    )
-                )
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Order created with ${items.size} line items!", Toast.LENGTH_SHORT).show()
-                    loadInvoices()
-                } else {
-                    Toast.makeText(context, "Failed to place order: ${response.code()}", Toast.LENGTH_SHORT).show()
+                var productsList = listOf<Product>()
+                val response = ApiClient.instance.getAdminProducts("Bearer $token")
+                if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                    productsList = response.body()!!
                 }
+
+                if (productsList.isEmpty()) {
+                    productsList = listOf(
+                        Product("prod-1", "Refurbished Temporary Fence Panel (6' x 12')", "sales", "panel", 65.0, 15.0, 150, 0, "Galvanized tubular steel frame perimeter panel", "/assets/banner.jpg", "", false, true, true),
+                        Product("prod-2", "Refurbished Temporary Fence Panel (6' x 10')", "sales", "panel", 50.0, 12.0, 120, 0, "Heavy-duty perimeter panel for compact sites", "/assets/banner.jpg", "", false, true, true),
+                        Product("prod-3", "Flat Stand (Standard Tubular Steel Base)", "sales", "stand", 10.0, 3.0, 300, 0, "Tubular steel base plate for panel support", "/assets/logo.jpg", "", false, true, true),
+                        Product("prod-4", "Safety Clamp / Panel Connector Clip", "sales", "clip", 5.0, 1.0, 500, 0, "High-tensile steel clamp coupler", "/assets/logo.jpg", "", false, true, true),
+                        Product("prod-5", "Privacy Windscreen Roll (6' x 50')", "sales", "accessory", 85.0, 25.0, 40, 0, "HDPE mesh privacy screen for dust & wind control", "/assets/banner.jpg", "", false, true, true)
+                    )
+                }
+
+                openCatalogDialogWithProducts(productsList)
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Error loading catalog: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun openCatalogDialogWithProducts(products: List<Product>) {
+        val context = context ?: return
+        val dialogBinding = DialogOrderCatalogBinding.inflate(LayoutInflater.from(context))
+
+        val cartMap = mutableMapOf<Product, Int>()
+        var isRentalOrder = false
+
+        dialogBinding.rvCatalogProducts.layoutManager = LinearLayoutManager(context)
+
+        fun updateCartSummaryBar() {
+            val totalItems = cartMap.values.sum()
+            val subtotal = cartMap.entries.sumOf { (product, qty) ->
+                val price = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
+                price * qty
+            }
+            dialogBinding.tvCartItemCount.text = "🛒 Cart: $totalItems item(s)"
+            dialogBinding.tvCartTotalAmount.text = "Subtotal: $" + String.format("%.2f", subtotal)
+        }
+
+        class CatalogAdapter : RecyclerView.Adapter<CatalogAdapter.ViewHolder>() {
+            inner class ViewHolder(val binding: ItemProductCatalogBinding) : RecyclerView.ViewHolder(binding.root)
+
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+                val binding = ItemProductCatalogBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+                return ViewHolder(binding)
+            }
+
+            override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+                val product = products[position]
+                holder.binding.tvCatalogTitle.text = product.name
+                holder.binding.tvCatalogDesc.text = product.description.ifEmpty { "High quality temporary fencing equipment" }
+                holder.binding.tvCatalogStock.text = "In Stock: ${product.inStock} units"
+
+                val priceVal = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
+                val priceUnit = if (isRentalOrder) "/ mo" else "/ unit"
+                holder.binding.tvCatalogPrice.text = "$" + String.format("%.2f", priceVal) + " " + priceUnit
+
+                val currentQty = cartMap[product] ?: 0
+                holder.binding.tvItemCartQty.text = currentQty.toString()
+
+                if (!product.image.isNullOrEmpty()) {
+                    val fullUrl = if (product.image.startsWith("/")) "https://secure-a-fence-backend.onrender.com${product.image}" else product.image
+                    holder.binding.ivCatalogImage.load(fullUrl) {
+                        placeholder(R.drawable.banner)
+                        error(R.drawable.banner)
+                    }
+                } else {
+                    holder.binding.ivCatalogImage.setImageResource(R.drawable.banner)
+                }
+
+                holder.binding.btnQtyPlus.setOnClickListener {
+                    val count = (cartMap[product] ?: 0) + 1
+                    cartMap[product] = count
+                    holder.binding.tvItemCartQty.text = count.toString()
+                    updateCartSummaryBar()
+                }
+
+                holder.binding.btnQtyMinus.setOnClickListener {
+                    val count = (cartMap[product] ?: 0) - 1
+                    if (count > 0) {
+                        cartMap[product] = count
+                        holder.binding.tvItemCartQty.text = count.toString()
+                    } else {
+                        cartMap.remove(product)
+                        holder.binding.tvItemCartQty.text = "0"
+                    }
+                    updateCartSummaryBar()
+                }
+
+                holder.binding.btnAddToCart.setOnClickListener {
+                    val count = (cartMap[product] ?: 0) + 1
+                    cartMap[product] = count
+                    holder.binding.tvItemCartQty.text = count.toString()
+                    updateCartSummaryBar()
+                    Toast.makeText(holder.itemView.context, "Added 1x ${product.name} to Cart", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun getItemCount(): Int = products.size
+        }
+
+        val catalogAdapter = CatalogAdapter()
+        dialogBinding.rvCatalogProducts.adapter = catalogAdapter
+
+        dialogBinding.rgOrderType.setOnCheckedChangeListener { _, checkedId ->
+            isRentalOrder = (checkedId == R.id.rbRentalOrder)
+            catalogAdapter.notifyDataSetChanged()
+            updateCartSummaryBar()
+        }
+
+        val dialog = AlertDialog.Builder(context)
+            .setView(dialogBinding.root)
+            .setNegativeButton("Close", null)
+            .create()
+
+        dialogBinding.btnCheckoutCart.setOnClickListener {
+            if (cartMap.isEmpty() || cartMap.values.sum() == 0) {
+                Toast.makeText(context, "Please add at least one item to your cart before checking out", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            showCartCheckoutDialog(isRentalOrder, cartMap)
+        }
+
+        dialog.show()
+    }
+
+    private fun showCartCheckoutDialog(isRentalOrder: Boolean, cartMap: Map<Product, Int>) {
+        val context = context ?: return
+        val token = SessionManager.getToken(context) ?: return
+
+        val checkoutBinding = DialogCartCheckoutBinding.inflate(LayoutInflater.from(context))
+
+        val orderTypeStr = if (isRentalOrder) "rental" else "sale"
+        checkoutBinding.tvCheckoutTitle.text = "🛒 Review Order (${orderTypeStr.uppercase()})"
+
+        val itemsSummary = StringBuilder()
+        var subtotal = 0.0
+
+        for ((product, qty) in cartMap) {
+            val unitPrice = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
+            val lineTotal = unitPrice * qty
+            subtotal += lineTotal
+            itemsSummary.append("• ${qty}x ${product.name} @ $${String.format("%.2f", unitPrice)} = $${String.format("%.2f", lineTotal)}\n")
+        }
+
+        checkoutBinding.tvCheckoutItemsList.text = itemsSummary.toString().trim()
+
+        val deliveryFee = if (subtotal > 0) 50.0 else 0.0
+        val tax = Math.round(subtotal * 0.08 * 100.0) / 100.0
+        val grandTotal = subtotal + deliveryFee + tax
+
+        checkoutBinding.tvCheckoutSubtotal.text = "Subtotal: $" + String.format("%.2f", subtotal)
+        checkoutBinding.tvCheckoutDeliveryFee.text = "Delivery Transport Fee: $" + String.format("%.2f", deliveryFee)
+        checkoutBinding.tvCheckoutTax.text = "Tax (8%): $" + String.format("%.2f", tax)
+        checkoutBinding.tvCheckoutGrandTotal.text = "Grand Total: $" + String.format("%.2f", grandTotal)
+
+        val dialog = AlertDialog.Builder(context)
+            .setView(checkoutBinding.root)
+            .setNegativeButton("Back to Cart", null)
+            .create()
+
+        checkoutBinding.btnSubmitOrderAndDispatch.setOnClickListener {
+            val customerName = checkoutBinding.etCheckoutCustomerName.text.toString().trim()
+            val company = checkoutBinding.etCheckoutCompany.text.toString().trim().ifEmpty { "Direct Client" }
+            val phone = checkoutBinding.etCheckoutPhone.text.toString().trim().ifEmpty { "(279) 261-3890" }
+            val email = checkoutBinding.etCheckoutEmail.text.toString().trim().ifEmpty { "sales@order.com" }
+            val address = checkoutBinding.etCheckoutDeliveryAddress.text.toString().trim()
+
+            if (customerName.isEmpty() || address.isEmpty()) {
+                Toast.makeText(context, "Please enter Customer Name and Delivery Address", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val orderId = "ORD-" + (1000..9999).random()
+
+            val orderItems = cartMap.map { (product, qty) ->
+                val unitPrice = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
+                OrderItem(
+                    productId = product.id ?: ("prod-" + System.currentTimeMillis()),
+                    name = product.name,
+                    unitPrice = unitPrice,
+                    quantity = qty,
+                    deliveredQuantity = qty,
+                    total = unitPrice * qty
+                )
+            }
+
+            val newOrder = Order(
+                id = orderId,
+                customerId = "cust-" + System.currentTimeMillis(),
+                customerName = customerName,
+                customerCompany = company,
+                customerEmail = email,
+                customerPhone = phone,
+                orderType = orderTypeStr,
+                items = orderItems,
+                subtotal = subtotal,
+                deliveryFee = deliveryFee,
+                tax = tax,
+                totalAmount = grandTotal,
+                status = "Processing",
+                deliveryAddress = address,
+                jobsiteContact = customerName,
+                deliveryDate = today,
+                createdAt = today,
+                paymentStatus = "Unpaid",
+                paymentMethod = "None"
+            )
+
+            lifecycleScope.launch {
+                try {
+                    // 1. Create order in backend with status Processing
+                    ApiClient.instance.createOrder("Bearer $token", newOrder)
+
+                    // 2. Dispatch to Shipping Queue with status Processing
+                    ApiClient.instance.schedulePickup(
+                        "Bearer $token",
+                        SchedulePickupRequest(
+                            orderId = orderId,
+                            driverName = "Dispatcher Fleet",
+                            dispatchDate = today,
+                            destination = address,
+                            notes = "Status: PROCESSING - Order placed via Catalog (${orderItems.size} line items)"
+                        )
+                    )
+
+                    // 3. Auto-generate Invoice for Order
+                    ApiClient.instance.createInvoice(
+                        "Bearer $token",
+                        CreateInvoiceRequest(
+                            orderId = orderId,
+                            customerName = customerName,
+                            amount = grandTotal,
+                            status = "unpaid"
+                        )
+                    )
+
+                    Toast.makeText(context, "🎉 Order #$orderId placed successfully!\nDispatched to Shipping Queue (Processing).", Toast.LENGTH_LONG).show()
+
+                    dialog.dismiss()
+                    loadInvoices()
+
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Order created: ${e.message}", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    loadInvoices()
+                }
+            }
+        }
+
+        dialog.show()
     }
 
     private fun showCreateInvoiceDialog() {
         val context = context ?: return
-        val builder = android.app.AlertDialog.Builder(context)
+        val builder = AlertDialog.Builder(context)
         builder.setTitle("Create New Invoice")
 
-        val layout = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(32, 16, 32, 16)
         }
 
-        val inputOrderId = android.widget.EditText(context).apply { hint = "Order ID (e.g. ORD-101)" }
-        val inputCustomer = android.widget.EditText(context).apply { hint = "Customer Name" }
-        val inputAmount = android.widget.EditText(context).apply { 
+        val inputOrderId = EditText(context).apply { hint = "Order ID (e.g. ORD-101)" }
+        val inputCustomer = EditText(context).apply { hint = "Customer Name" }
+        val inputAmount = EditText(context).apply {
             hint = "Amount"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
 
         layout.addView(inputOrderId)
@@ -228,14 +365,14 @@ class InvoicesFragment : Fragment() {
 
     private fun createInvoice(orderId: String, customer: String, amount: Double) {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        val token = SessionManager.getToken(context)
         if (token.isNullOrEmpty()) return
 
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.createInvoice(
                     "Bearer $token",
-                    com.example.secureafenceadministrator.data.model.CreateInvoiceRequest(
+                    CreateInvoiceRequest(
                         orderId = orderId,
                         customerName = customer,
                         amount = amount,
@@ -256,9 +393,9 @@ class InvoicesFragment : Fragment() {
 
     private fun loadInvoices() {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        val token = SessionManager.getToken(context)
         if (token.isNullOrEmpty()) {
-            com.example.secureafenceadministrator.data.network.SessionManager.clearSession(context)
+            SessionManager.clearSession(context)
             return
         }
 
@@ -271,16 +408,20 @@ class InvoicesFragment : Fragment() {
                         orders,
                         titleProvider = { "${it.orderType.uppercase()} #${it.id}" },
                         subtitleProvider = { 
-                            val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item -> "${item.quantity}x ${item.name}" }
+                            val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item ->
+                                val delText = if (item.deliveredQuantity != null) " (Delivered: ${item.deliveredQuantity})" else ""
+                                "${item.quantity}x ${item.name}$delText"
+                            }
                             "Customer: ${it.customerName}\nItems: $itemsSummary\nAmount: $${it.totalAmount}"
                         },
                         statusProvider = { "Status: ${it.status} | Payment: ${it.paymentStatus ?: "Unpaid"}" },
+                        rightImageResIdProvider = { R.drawable.logo },
                         onItemClick = { showOrderDetailsDialog(it) }
                     )
                     binding.recyclerViewInvoices.adapter = adapter
                 } else if (response.code() == 401) {
                     Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
-                    com.example.secureafenceadministrator.data.network.SessionManager.clearSession(context)
+                    SessionManager.clearSession(context)
                 } else {
                     Toast.makeText(context, "Failed to load invoices", Toast.LENGTH_SHORT).show()
                 }
@@ -290,9 +431,9 @@ class InvoicesFragment : Fragment() {
         }
     }
 
-    private fun showOrderDetailsDialog(order: com.example.secureafenceadministrator.data.model.Order) {
+    private fun showOrderDetailsDialog(order: Order) {
         val context = context ?: return
-        val builder = android.app.AlertDialog.Builder(context)
+        val builder = AlertDialog.Builder(context)
         builder.setTitle("Order & Invoice #${order.id}")
 
         val detailText = StringBuilder()
@@ -304,12 +445,13 @@ class InvoicesFragment : Fragment() {
         detailText.append("Status: ${order.status}\n")
         detailText.append("Payment Status: ${order.paymentStatus ?: "Unpaid"} (${order.paymentMethod ?: "None"})\n\n")
 
-        detailText.append("--- Line Items ---\n")
+        detailText.append("--- Line Items (Ordered vs Delivered) ---\n")
         if (order.items.isNullOrEmpty()) {
             detailText.append("• 1x Custom Temporary Fence Package @ $${order.subtotal}\n")
         } else {
             for (item in order.items) {
-                detailText.append("• ${item.quantity}x ${item.name} @ $${item.unitPrice} = $${item.total}\n")
+                val delQty = item.deliveredQuantity ?: item.quantity
+                detailText.append("• ${item.name}\n  Ordered: ${item.quantity} | Delivered: $delQty @ $${item.unitPrice} = $${item.total}\n")
             }
         }
         detailText.append("\n")
@@ -335,10 +477,10 @@ class InvoicesFragment : Fragment() {
         builder.show()
     }
 
-    private fun showMarkPaidDialog(order: com.example.secureafenceadministrator.data.model.Order) {
+    private fun showMarkPaidDialog(order: Order) {
         val context = context ?: return
         val options = arrayOf("Cash", "CashApp", "Credit Card", "Unpaid")
-        android.app.AlertDialog.Builder(context)
+        AlertDialog.Builder(context)
             .setTitle("Select Payment Method")
             .setItems(options) { _, which ->
                 val selectedMethod = options[which]
@@ -348,10 +490,10 @@ class InvoicesFragment : Fragment() {
             .show()
     }
 
-    private fun showUpdateDeliveryStatusDialog(order: com.example.secureafenceadministrator.data.model.Order) {
+    private fun showUpdateDeliveryStatusDialog(order: Order) {
         val context = context ?: return
         val options = arrayOf("Pending Dispatch", "In Route", "Delivered", "On Hold")
-        android.app.AlertDialog.Builder(context)
+        AlertDialog.Builder(context)
             .setTitle("Select Delivery Status")
             .setItems(options) { _, which ->
                 val selectedStatus = options[which]
@@ -362,14 +504,14 @@ class InvoicesFragment : Fragment() {
 
     private fun updateOrderPayment(orderId: String, paymentStatus: String, paymentMethod: String) {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context) ?: return
+        val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.updateOrderPayment(
                     "Bearer $token",
                     orderId,
-                    com.example.secureafenceadministrator.data.model.OrderPaymentUpdateRequest(
+                    OrderPaymentUpdateRequest(
                         paymentStatus = paymentStatus,
                         paymentMethod = paymentMethod
                     )
@@ -388,14 +530,14 @@ class InvoicesFragment : Fragment() {
 
     private fun updateOrderDeliveryStatus(orderId: String, status: String) {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context) ?: return
+        val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.updateOrderStatus(
                     "Bearer $token",
                     orderId,
-                    com.example.secureafenceadministrator.data.model.StatusUpdateRequest(status = status)
+                    StatusUpdateRequest(status = status)
                 )
                 if (response.isSuccessful) {
                     Toast.makeText(context, "Status updated to $status", Toast.LENGTH_SHORT).show()
@@ -409,10 +551,10 @@ class InvoicesFragment : Fragment() {
         }
     }
 
-    private fun generatePdfInvoice(order: com.example.secureafenceadministrator.data.model.Order) {
-        val pdfDocument = android.graphics.pdf.PdfDocument()
-        val paint = android.graphics.Paint()
-        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
+    private fun generatePdfInvoice(order: Order) {
+        val pdfDocument = PdfDocument()
+        val paint = Paint()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
         val page = pdfDocument.startPage(pageInfo)
         val canvas = page.canvas
 
@@ -449,8 +591,9 @@ class InvoicesFragment : Fragment() {
         paint.isFakeBoldText = true
         canvas.drawLine(40f, 240f, 555f, 240f, paint)
         canvas.drawText("Item Description", 40f, 260f, paint)
-        canvas.drawText("Qty", 350f, 260f, paint)
-        canvas.drawText("Unit Price", 420f, 260f, paint)
+        canvas.drawText("Ord Qty", 310f, 260f, paint)
+        canvas.drawText("Del Qty", 370f, 260f, paint)
+        canvas.drawText("Unit Price", 430f, 260f, paint)
         canvas.drawText("Total", 500f, 260f, paint)
         canvas.drawLine(40f, 275f, 555f, 275f, paint)
 
@@ -459,15 +602,18 @@ class InvoicesFragment : Fragment() {
         var y = 300f
         if (order.items.isNullOrEmpty()) {
             canvas.drawText("Custom Temporary Fence Package", 40f, y, paint)
-            canvas.drawText("1", 350f, y, paint)
-            canvas.drawText("$${order.subtotal}", 420f, y, paint)
+            canvas.drawText("1", 310f, y, paint)
+            canvas.drawText("1", 370f, y, paint)
+            canvas.drawText("$${order.subtotal}", 430f, y, paint)
             canvas.drawText("$${order.subtotal}", 500f, y, paint)
             y += 25f
         } else {
             for (item in order.items) {
-                canvas.drawText(item.name.take(30), 40f, y, paint)
-                canvas.drawText(item.quantity.toString(), 350f, y, paint)
-                canvas.drawText("$${item.unitPrice}", 420f, y, paint)
+                canvas.drawText(item.name.take(28), 40f, y, paint)
+                canvas.drawText(item.quantity.toString(), 310f, y, paint)
+                val delQty = item.deliveredQuantity ?: item.quantity
+                canvas.drawText(delQty.toString(), 370f, y, paint)
+                canvas.drawText("$${item.unitPrice}", 430f, y, paint)
                 canvas.drawText("$${item.total}", 500f, y, paint)
                 y += 25f
             }
@@ -476,17 +622,17 @@ class InvoicesFragment : Fragment() {
         // Totals
         canvas.drawLine(300f, y + 10, 555f, y + 10, paint)
         y += 40f
-        canvas.drawText("Subtotal:", 420f, y, paint)
+        canvas.drawText("Subtotal:", 430f, y, paint)
         canvas.drawText("$${order.subtotal}", 500f, y, paint)
         y += 25f
-        canvas.drawText("Delivery Fee:", 420f, y, paint)
+        canvas.drawText("Delivery Fee:", 430f, y, paint)
         canvas.drawText("$${order.deliveryFee}", 500f, y, paint)
         y += 25f
-        canvas.drawText("Tax (8%):", 420f, y, paint)
+        canvas.drawText("Tax (8%):", 430f, y, paint)
         canvas.drawText("$${order.tax}", 500f, y, paint)
         y += 25f
         paint.isFakeBoldText = true
-        canvas.drawText("Total:", 420f, y, paint)
+        canvas.drawText("Total:", 430f, y, paint)
         canvas.drawText("$${order.totalAmount}", 500f, y, paint)
 
         // Footer
@@ -495,9 +641,9 @@ class InvoicesFragment : Fragment() {
 
         pdfDocument.finishPage(page)
 
-        val file = java.io.File("/sdcard/Download/Invoice_${order.id}.pdf")
+        val file = File("/sdcard/Download/Invoice_${order.id}.pdf")
         try {
-            pdfDocument.writeTo(java.io.FileOutputStream(file))
+            pdfDocument.writeTo(FileOutputStream(file))
             Toast.makeText(context, "Invoice exported: Invoice_${order.id}.pdf", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(context, "PDF Error: ${e.message}", Toast.LENGTH_SHORT).show()

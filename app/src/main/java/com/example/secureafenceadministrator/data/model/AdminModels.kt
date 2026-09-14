@@ -42,6 +42,7 @@ data class OrderItem(
     val name: String = "",
     val unitPrice: Double = 0.0,
     val quantity: Int = 0,
+    val deliveredQuantity: Int? = null,
     val total: Double = 0.0
 )
 
@@ -107,7 +108,10 @@ data class Shipment(
     val dispatchDate: String = "",
     val status: String = "",
     val destination: String = "",
-    val notes: String = ""
+    val notes: String = "",
+    val eta: String? = "",
+    val deliveryPhotos: List<String>? = emptyList(),
+    val deliveredItems: List<OrderItem>? = emptyList()
 )
 
 data class StatusUpdateRequest(
@@ -118,7 +122,10 @@ data class ShipmentUpdateRequest(
     val driverName: String? = null,
     val status: String? = null,
     val dispatchDate: String? = null,
-    val notes: String? = null
+    val notes: String? = null,
+    val eta: String? = null,
+    val deliveryPhotos: List<String>? = null,
+    val deliveredItems: List<OrderItem>? = null
 )
 
 data class ExtendRentalRequest(
@@ -180,6 +187,7 @@ data class CreateCustomerRequest(
     val role: String? = "customer",
     val isTaxable: Boolean = true,
     val businessAddress: String? = null,
+    val password: String? = null,
     val jobsites: List<Jobsite>? = null
 )
 

@@ -67,5 +67,16 @@
                 android:textColor="@android:color/holo_blue_dark"/>
 
         </LinearLayout>
+
+        <ImageView
+            android:id="@+id/ivLogoEnd"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/logo"
+            android:visibility="gone"
+            android:contentDescription="Company Logo" />
     </LinearLayout>
 </androidx.cardview.widget.CardView>

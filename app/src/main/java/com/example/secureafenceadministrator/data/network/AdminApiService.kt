@@ -52,6 +52,14 @@ interface AdminApiService {
         @Body request: ShipmentUpdateRequest
     ): Response<Map<String, Any>>
 
+    @Multipart
+    @POST("api/admin/shipments/{id}/photos")
+    suspend fun uploadDeliveryPhoto(
+        @Header("Authorization") token: String,
+        @Path("id") shipmentId: String,
+        @Part photo: MultipartBody.Part
+    ): Response<Map<String, Any>>
+
     @POST("api/admin/sales")
     suspend fun createOrder(
         @Header("Authorization") token: String,
@@ -69,6 +77,13 @@ interface AdminApiService {
         @Header("Authorization") token: String,
         @Path("id") rentalId: String,
         @Body request: ExtendRentalRequest
+    ): Response<Map<String, Any>>
+
+    @PUT("api/admin/rentals/{id}")
+    suspend fun updateRental(
+        @Header("Authorization") token: String,
+        @Path("id") rentalId: String,
+        @Body rental: Rental
     ): Response<Map<String, Any>>
 
     @PUT("api/admin/rentals/{id}/checkin")
