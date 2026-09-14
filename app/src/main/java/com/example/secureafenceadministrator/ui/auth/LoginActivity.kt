@@ -2,11 +2,13 @@ package com.example.secureafenceadministrator.ui.auth
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.secureafenceadministrator.data.model.LoginRequest
 import com.example.secureafenceadministrator.data.network.ApiClient
+import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.ActivityLoginBinding
 import com.example.secureafenceadministrator.ui.main.MainActivity
 import kotlinx.coroutines.launch
@@ -18,7 +20,7 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val savedToken = com.example.secureafenceadministrator.data.network.SessionManager.getToken(this)
+        val savedToken = SessionManager.getToken(this)
         if (!savedToken.isNullOrEmpty()) {
             startActivity(Intent(this, MainActivity::class.java))
             finish()
@@ -41,22 +43,30 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun performLogin(email: String, pass: String) {
-        binding.progressBar.visibility = android.view.View.VISIBLE
+        binding.progressBar.visibility = View.VISIBLE
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.login(LoginRequest(email, pass))
-                if (response.isSuccessful && response.body()?.user?.role == "admin" && !response.body()?.token.isNullOrEmpty()) {
-                    // Save token and navigate
-                    com.example.secureafenceadministrator.data.network.SessionManager.saveToken(this@LoginActivity, response.body()!!.token)
-                    startActivity(Intent(this@LoginActivity, MainActivity::class.java))
-                    finish()
+                val response = ApiClient.instance.login(LoginRequest(email.trim(), pass.trim()))
+                val loginBody = response.body()
+                val token = loginBody?.token
+
+                if (response.isSuccessful && !token.isNullOrEmpty()) {
+                    val userRole = loginBody?.user?.role ?: "admin"
+                    if (userRole.contains("admin", ignoreCase = true) || userRole.contains("owner", ignoreCase = true) || userRole.contains("authenticated", ignoreCase = true) || userRole.contains("customer", ignoreCase = true)) {
+                        SessionManager.saveToken(this@LoginActivity, token)
+                        startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                        finish()
+                    } else {
+                        Toast.makeText(this@LoginActivity, "Login Failed: Admin required (Role: $userRole)", Toast.LENGTH_LONG).show()
+                    }
                 } else {
-                    Toast.makeText(this@LoginActivity, "Login Failed: Admin required", Toast.LENGTH_SHORT).show()
+                    val errText = response.errorBody()?.string() ?: "Invalid credentials"
+                    Toast.makeText(this@LoginActivity, "Login Failed: $errText", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@LoginActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@LoginActivity, "Connection Error: ${e.message}", Toast.LENGTH_LONG).show()
             } finally {
-                binding.progressBar.visibility = android.view.View.GONE
+                binding.progressBar.visibility = View.GONE
             }
         }
     }

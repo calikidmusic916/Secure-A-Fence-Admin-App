@@ -51,14 +51,15 @@ class CustomersFragment : Fragment() {
                     val customers = response.body()!!
                     val adapter = GenericAdapter(
                         customers,
-                        titleProvider = { it.name },
+                        titleProvider = { it.name.orEmpty().ifEmpty { "Unnamed Customer" } },
                         subtitleProvider = { 
                             val taxStatus = if (it.isTaxable) "Taxable (8%)" else "Tax Exempt"
                             "Company: ${it.company ?: "N/A"}\nBusiness Address: ${it.businessAddress ?: "N/A"}\nEmail: ${it.email}\nPhone: ${it.phone ?: "N/A"}\nTax: $taxStatus" 
                         },
                         statusProvider = { 
                             val jobsCount = it.jobsites?.size ?: 0
-                            "Role: ${it.role.uppercase()} | $jobsCount Jobsites" 
+                            val roleText = it.role.orEmpty().ifEmpty { "customer" }.uppercase()
+                            "Role: $roleText | $jobsCount Jobsites" 
                         },
                         onItemClick = { showCustomerDetails(it) }
                     )
@@ -75,7 +76,7 @@ class CustomersFragment : Fragment() {
     private fun showCustomerDetails(customer: Customer) {
         val context = context ?: return
         val builder = AlertDialog.Builder(context)
-        builder.setTitle(customer.name)
+        builder.setTitle(customer.name.orEmpty().ifEmpty { "Customer Details" })
 
         val taxStatus = if (customer.isTaxable) "Taxable (8% Sales Tax)" else "Tax Exempt (0% Tax)"
         val jobsitesList = customer.jobsites
@@ -90,13 +91,15 @@ class CustomersFragment : Fragment() {
             jobsitesSummary += "\nNo jobsites created yet."
         }
 
+        val roleText = customer.role.orEmpty().ifEmpty { "customer" }.uppercase()
+
         val details = """
             Email: ${customer.email}
             Company: ${customer.company ?: "N/A"}
             Phone: ${customer.phone ?: "N/A"}
             Business Address: ${customer.businessAddress ?: "N/A"}
             Tax Status: $taxStatus
-            Role: ${customer.role.uppercase()}
+            Role: $roleText
             $jobsitesSummary
         """.trimIndent()
 
@@ -135,8 +138,9 @@ class CustomersFragment : Fragment() {
 
     private fun showJobsiteActionDialog(customer: Customer, jobsite: Jobsite) {
         val context = context ?: return
-        val activeRentalsSummary = if (!jobsite.activeRentals.isNullOrEmpty()) {
-            jobsite.activeRentals.joinToString("\n") { "• Rental #${it.id}: ${it.items.joinToString { item -> "${item.quantity}x ${item.name}" }} (${it.startDate} to ${it.endDate})" }
+        val activeRentals = jobsite.activeRentals
+        val activeRentalsSummary = if (!activeRentals.isNullOrEmpty()) {
+            activeRentals.joinToString("\n") { "• Rental #${it.id}: ${it.items.joinToString { item -> "${item.quantity}x ${item.name}" }} (${it.startDate} to ${it.endDate})" }
         } else {
             "No active rentals deployed at this jobsite."
         }
@@ -166,8 +170,10 @@ class CustomersFragment : Fragment() {
             .setTitle("Delete Jobsite")
             .setMessage("Are you sure you want to remove jobsite ${jobsite.name}?")
             .setPositiveButton("Yes") { _, _ ->
-                if (jobsite.id != null) {
-                    deleteJobsite(customer.id, jobsite.id)
+                val jobId = jobsite.id
+                val custId = customer.id
+                if (jobId != null && custId.isNotEmpty()) {
+                    deleteJobsite(custId, jobId)
                 }
             }
             .setNegativeButton("No", null)

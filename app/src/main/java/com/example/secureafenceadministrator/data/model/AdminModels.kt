@@ -1,66 +1,64 @@
 package com.example.secureafenceadministrator.data.model
 
-import com.google.gson.annotations.SerializedName
-
 data class LoginRequest(
     val email: String,
     val password: String
 )
 
 data class LoginResponse(
-    val token: String,
-    val user: User
+    val token: String? = null,
+    val user: User? = null
 )
 
 data class User(
-    val id: String,
-    val name: String,
-    val email: String,
-    val role: String,
-    val company: String?,
-    val phone: String?
+    val id: String = "",
+    val name: String = "",
+    val email: String = "",
+    val role: String = "admin",
+    val company: String? = null,
+    val phone: String? = null
 )
 
 data class AdminOverviewResponse(
-    val metrics: Metrics
+    val metrics: Metrics? = null
 )
 
 data class Metrics(
-    val totalSalesRevenue: Double,
-    val monthlyRentalRevenue: Double,
-    val totalPanelsRentedOut: Int,
-    val panelsInWarehouse: Int,
-    val totalOrdersCount: Int,
-    val activeRentalsCount: Int,
-    val pendingDispatchesCount: Int
+    val totalSalesRevenue: Double = 0.0,
+    val monthlyRentalRevenue: Double = 0.0,
+    val totalPanelsRentedOut: Int = 0,
+    val panelsInWarehouse: Int = 0,
+    val totalOrdersCount: Int = 0,
+    val activeRentalsCount: Int = 0,
+    val pendingDispatchesCount: Int = 0
 )
 
 data class OrderItem(
-    val productId: String,
-    val name: String,
-    val unitPrice: Double,
-    val quantity: Int,
-    val total: Double
+    val productId: String = "",
+    val name: String = "",
+    val unitPrice: Double = 0.0,
+    val quantity: Int = 0,
+    val total: Double = 0.0
 )
 
 data class Order(
-    val id: String,
-    val customerId: String,
-    val customerName: String,
-    val customerCompany: String,
-    val customerEmail: String,
-    val customerPhone: String,
-    val orderType: String, // 'sale' or 'rental'
-    val items: List<OrderItem>,
-    val subtotal: Double,
-    val deliveryFee: Double,
-    val tax: Double,
-    val totalAmount: Double,
-    val status: String,
-    val deliveryAddress: String,
-    val jobsiteContact: String,
-    val deliveryDate: String,
-    val createdAt: String,
+    val id: String = "",
+    val customerId: String = "",
+    val customerName: String = "",
+    val customerCompany: String = "",
+    val customerEmail: String = "",
+    val customerPhone: String = "",
+    val orderType: String = "sale",
+    val items: List<OrderItem> = emptyList(),
+    val subtotal: Double = 0.0,
+    val deliveryFee: Double = 0.0,
+    val tax: Double = 0.0,
+    val totalAmount: Double = 0.0,
+    val status: String = "Processing",
+    val deliveryAddress: String = "",
+    val jobsiteContact: String = "",
+    val deliveryDate: String = "",
+    val createdAt: String = "",
     val paymentStatus: String? = "Unpaid",
     val paymentMethod: String? = "None"
 )
@@ -72,40 +70,40 @@ data class OrderPaymentUpdateRequest(
 )
 
 data class RentalItem(
-    val productId: String,
-    val name: String,
-    val quantity: Int,
-    val monthlyUnitPrice: Double,
-    val subtotal: Double
+    val productId: String = "",
+    val name: String = "",
+    val quantity: Int = 0,
+    val monthlyUnitPrice: Double = 0.0,
+    val subtotal: Double = 0.0
 )
 
 data class Rental(
-    val id: String,
-    val orderId: String,
-    val customerId: String,
-    val customerName: String,
-    val customerCompany: String,
-    val customerEmail: String,
-    val customerPhone: String,
-    val jobsiteAddress: String,
-    val jobsiteContact: String,
-    val startDate: String,
-    val endDate: String,
-    val monthlyRateTotal: Double,
-    val status: String,
-    val items: List<RentalItem>,
-    val notes: String
+    val id: String = "",
+    val orderId: String = "",
+    val customerId: String = "",
+    val customerName: String = "",
+    val customerCompany: String = "",
+    val customerEmail: String = "",
+    val customerPhone: String = "",
+    val jobsiteAddress: String = "",
+    val jobsiteContact: String = "",
+    val startDate: String = "",
+    val endDate: String = "",
+    val monthlyRateTotal: Double = 0.0,
+    val status: String = "Active",
+    val items: List<RentalItem> = emptyList(),
+    val notes: String = ""
 )
 
 data class Shipment(
-    val id: String,
-    val orderId: String,
-    val type: String,
-    val driverName: String,
-    val dispatchDate: String,
-    val status: String,
-    val destination: String,
-    val notes: String
+    val id: String = "",
+    val orderId: String = "",
+    val type: String = "",
+    val driverName: String = "",
+    val dispatchDate: String = "",
+    val status: String = "",
+    val destination: String = "",
+    val notes: String = ""
 )
 
 data class StatusUpdateRequest(
@@ -132,12 +130,12 @@ data class SchedulePickupRequest(
 )
 
 data class Invoice(
-    val id: String,
-    val orderId: String,
-    val customerName: String,
-    val amount: Double,
-    val status: String,
-    val createdAt: String
+    val id: String = "",
+    val orderId: String = "",
+    val customerName: String = "",
+    val amount: Double = 0.0,
+    val status: String = "unpaid",
+    val createdAt: String = ""
 )
 
 data class CreateInvoiceRequest(
@@ -149,8 +147,8 @@ data class CreateInvoiceRequest(
 
 data class Jobsite(
     val id: String? = null,
-    val name: String,
-    val address: String,
+    val name: String = "",
+    val address: String = "",
     val contactName: String? = null,
     val contactPhone: String? = null,
     val specialInstructions: String? = null,
@@ -159,12 +157,12 @@ data class Jobsite(
 )
 
 data class Customer(
-    val id: String,
-    val name: String,
-    val email: String,
-    val role: String,
-    val company: String?,
-    val phone: String?,
+    val id: String = "",
+    val name: String = "",
+    val email: String = "",
+    val role: String = "customer",
+    val company: String? = null,
+    val phone: String? = null,
     val isTaxable: Boolean = true,
     val businessAddress: String? = null,
     val jobsites: List<Jobsite>? = null
@@ -182,17 +180,17 @@ data class CreateCustomerRequest(
 )
 
 data class Product(
-    val id: String?,
-    val name: String,
-    val category: String,
-    val type: String,
-    val salePrice: Double,
-    val rentalPriceMonthly: Double,
-    val inStock: Int,
-    val rentedCount: Int,
-    val description: String,
-    val image: String,
-    val specs: String,
+    val id: String? = null,
+    val name: String = "",
+    val category: String = "sales",
+    val type: String = "panel",
+    val salePrice: Double = 0.0,
+    val rentalPriceMonthly: Double = 0.0,
+    val inStock: Int = 0,
+    val rentedCount: Int = 0,
+    val description: String = "",
+    val image: String = "",
+    val specs: String = "",
     val suspended: Boolean = false,
     val isRental: Boolean = true,
     val isPurchase: Boolean = true

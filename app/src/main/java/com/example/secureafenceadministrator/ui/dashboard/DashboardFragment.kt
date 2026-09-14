@@ -1,14 +1,21 @@
 package com.example.secureafenceadministrator.ui.dashboard
 
+import android.app.AlertDialog
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.example.secureafenceadministrator.data.model.CreateCustomerRequest
+import com.example.secureafenceadministrator.data.model.Customer
 import com.example.secureafenceadministrator.data.network.ApiClient
+import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.FragmentDashboardBinding
 import kotlinx.coroutines.launch
 
@@ -41,18 +48,18 @@ class DashboardFragment : Fragment() {
 
     private fun showCreateCustomerDialog() {
         val context = context ?: return
-        val builder = android.app.AlertDialog.Builder(context)
+        val builder = AlertDialog.Builder(context)
         builder.setTitle("Create Customer Login Account")
 
-        val layout = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(32, 16, 32, 16)
         }
 
-        val inputName = android.widget.EditText(context).apply { hint = "Full Name" }
-        val inputEmail = android.widget.EditText(context).apply { hint = "Email Address" }
-        val inputCompany = android.widget.EditText(context).apply { hint = "Company Name" }
-        val inputPhone = android.widget.EditText(context).apply { hint = "Phone Number" }
+        val inputName = EditText(context).apply { hint = "Full Name" }
+        val inputEmail = EditText(context).apply { hint = "Email Address" }
+        val inputCompany = EditText(context).apply { hint = "Company Name" }
+        val inputPhone = EditText(context).apply { hint = "Phone Number" }
 
         layout.addView(inputName)
         layout.addView(inputEmail)
@@ -78,14 +85,14 @@ class DashboardFragment : Fragment() {
 
     private fun createCustomer(name: String, email: String, company: String, phone: String) {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        val token = SessionManager.getToken(context)
         if (token.isNullOrEmpty()) return
 
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.createCustomer(
                     "Bearer $token",
-                    com.example.secureafenceadministrator.data.model.CreateCustomerRequest(
+                    CreateCustomerRequest(
                         name = name,
                         email = email,
                         company = company,
@@ -105,31 +112,33 @@ class DashboardFragment : Fragment() {
 
     private fun showCustomersDialog() {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context) ?: return
+        val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
-                // Fetch customers directly, but also fallback to extracting from orders
                 val customersResponse = ApiClient.instance.getCustomers("Bearer $token")
                 val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
                 val rentalsResponse = ApiClient.instance.getRentals("Bearer $token")
 
-                val customerMap = mutableMapOf<String, com.example.secureafenceadministrator.data.model.Customer>()
+                val customerMap = mutableMapOf<String, Customer>()
 
-                // 1. Add from direct customers endpoint if successful
                 if (customersResponse.isSuccessful && customersResponse.body() != null) {
-                    customersResponse.body()!!.forEach { customerMap[it.email.lowercase()] = it }
+                    customersResponse.body()!!.forEach { 
+                        val emailKey = it.email.orEmpty().lowercase()
+                        if (emailKey.isNotEmpty()) {
+                            customerMap[emailKey] = it
+                        }
+                    }
                 }
 
-                // 2. Add/Complement from Sales Orders
                 if (salesResponse.isSuccessful && salesResponse.body() != null) {
                     salesResponse.body()!!.forEach { order ->
-                        val email = order.customerEmail.lowercase()
-                        if (!customerMap.containsKey(email)) {
-                            customerMap[email] = com.example.secureafenceadministrator.data.model.Customer(
-                                id = order.customerId,
-                                name = order.customerName,
-                                email = order.customerEmail,
+                        val email = order.customerEmail.orEmpty().lowercase()
+                        if (email.isNotEmpty() && !customerMap.containsKey(email)) {
+                            customerMap[email] = Customer(
+                                id = order.customerId.orEmpty(),
+                                name = order.customerName.orEmpty(),
+                                email = order.customerEmail.orEmpty(),
                                 role = "customer",
                                 company = order.customerCompany,
                                 phone = order.customerPhone
@@ -138,15 +147,14 @@ class DashboardFragment : Fragment() {
                     }
                 }
 
-                // 3. Add/Complement from Rentals
                 if (rentalsResponse.isSuccessful && rentalsResponse.body() != null) {
                     rentalsResponse.body()!!.forEach { rental ->
-                        val email = rental.customerEmail.lowercase()
-                        if (!customerMap.containsKey(email)) {
-                            customerMap[email] = com.example.secureafenceadministrator.data.model.Customer(
-                                id = rental.customerId,
-                                name = rental.customerName,
-                                email = rental.customerEmail,
+                        val email = rental.customerEmail.orEmpty().lowercase()
+                        if (email.isNotEmpty() && !customerMap.containsKey(email)) {
+                            customerMap[email] = Customer(
+                                id = rental.customerId.orEmpty(),
+                                name = rental.customerName.orEmpty(),
+                                email = rental.customerEmail.orEmpty(),
                                 role = "customer",
                                 company = rental.customerCompany,
                                 phone = rental.customerPhone
@@ -162,8 +170,8 @@ class DashboardFragment : Fragment() {
                     return@launch
                 }
 
-                val items = customers.map { "${it.name} - ${it.email} (${it.company ?: "Indiv"})" }.toTypedArray()
-                android.app.AlertDialog.Builder(context)
+                val items = customers.map { "${it.name ?: "Customer"} - ${it.email ?: "N/A"} (${it.company ?: "Indiv"})" }.toTypedArray()
+                AlertDialog.Builder(context)
                     .setTitle("Manage Customers (${customers.size})")
                     .setItems(items) { _, which ->
                         showCustomerDetailsDialog(customers[which])
@@ -176,9 +184,9 @@ class DashboardFragment : Fragment() {
         }
     }
 
-    private fun showCustomerDetailsDialog(customer: com.example.secureafenceadministrator.data.model.Customer) {
+    private fun showCustomerDetailsDialog(customer: Customer) {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context) ?: return
+        val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
@@ -198,26 +206,26 @@ class DashboardFragment : Fragment() {
                 }
 
                 val details = StringBuilder()
-                details.append("Name: ${customer.name}\n")
-                details.append("Email: ${customer.email}\n")
+                details.append("Name: ${customer.name ?: "N/A"}\n")
+                details.append("Email: ${customer.email ?: "N/A"}\n")
                 details.append("Company: ${customer.company ?: "N/A"}\n")
                 details.append("Phone: ${customer.phone ?: "N/A"}\n")
-                details.append("Role: ${customer.role}\n\n")
+                details.append("Role: ${customer.role ?: "customer"}\n\n")
                 
                 details.append("--- Sales History (${customerOrders.size}) ---\n")
                 if (customerOrders.isEmpty()) details.append("No sales orders found.\n")
                 for (ord in customerOrders) {
-                    details.append("• #${ord.id} - $${ord.totalAmount} [${ord.status}]\n")
+                    details.append("• #${ord.id ?: "N/A"} - $${ord.totalAmount ?: 0.0} [${ord.status ?: "Processing"}]\n")
                 }
 
                 details.append("\n--- Rental History (${customerRentals.size}) ---\n")
                 if (customerRentals.isEmpty()) details.append("No active rentals found.\n")
                 for (rnt in customerRentals) {
-                    details.append("• #${rnt.id} - ${rnt.items.size} items [${rnt.status}]\n")
+                    details.append("• #${rnt.id ?: "N/A"} - ${rnt.items?.size ?: 0} items [${rnt.status ?: "Active"}]\n")
                 }
 
-                android.app.AlertDialog.Builder(context)
-                    .setTitle("Customer Account: ${customer.name}")
+                AlertDialog.Builder(context)
+                    .setTitle("Customer Account: ${customer.name ?: "Details"}")
                     .setMessage(details.toString())
                     .setPositiveButton("Close", null)
                     .show()
@@ -229,9 +237,9 @@ class DashboardFragment : Fragment() {
 
     private fun loadOverview() {
         val context = context ?: return
-        val token = com.example.secureafenceadministrator.data.network.SessionManager.getToken(context)
+        val token = SessionManager.getToken(context)
         if (token.isNullOrEmpty()) {
-            com.example.secureafenceadministrator.data.network.SessionManager.clearSession(context)
+            SessionManager.clearSession(context)
             return
         }
 
@@ -239,13 +247,18 @@ class DashboardFragment : Fragment() {
             try {
                 val response = ApiClient.instance.getAdminOverview("Bearer $token")
                 if (response.isSuccessful && response.body() != null) {
-                    val metrics = response.body()!!.metrics
-                    binding.tvSalesRevenue.text = "$${metrics.totalSalesRevenue}"
-                    binding.tvMonthlyRental.text = "$${metrics.monthlyRentalRevenue}"
-                    binding.tvActiveRentals.text = "${metrics.activeRentalsCount}"
-                    binding.tvStock.text = "${metrics.panelsInWarehouse}"
+                    val metrics = response.body()?.metrics
+                    if (metrics != null) {
+                        binding.tvSalesRevenue.text = "$${metrics.totalSalesRevenue ?: 0.0}"
+                        binding.tvMonthlyRental.text = "$${metrics.monthlyRentalRevenue ?: 0.0}"
+                        binding.tvActiveRentals.text = "${metrics.activeRentalsCount ?: 0}"
+                        binding.tvStock.text = "${metrics.panelsInWarehouse ?: 0}"
+                    }
+                } else if (response.code() == 401 || response.code() == 403) {
+                    Toast.makeText(context, "Session expired, please log in again", Toast.LENGTH_SHORT).show()
+                    SessionManager.clearSession(context)
                 } else {
-                    android.util.Log.e("API_DEBUG", "Error: ${response.code()} Body: ${response.errorBody()?.string()}")
+                    Log.e("API_DEBUG", "Error: ${response.code()} Body: ${response.errorBody()?.string()}")
                     Toast.makeText(context, "Failed to load overview: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
