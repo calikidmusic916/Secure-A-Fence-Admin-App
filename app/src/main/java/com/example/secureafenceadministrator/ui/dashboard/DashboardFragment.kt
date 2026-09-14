@@ -12,11 +12,13 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.data.model.CreateCustomerRequest
 import com.example.secureafenceadministrator.data.model.Customer
 import com.example.secureafenceadministrator.data.network.ApiClient
 import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.FragmentDashboardBinding
+import com.example.secureafenceadministrator.ui.products.ProductsFragment
 import kotlinx.coroutines.launch
 
 class DashboardFragment : Fragment() {
@@ -43,6 +45,13 @@ class DashboardFragment : Fragment() {
 
         binding.btnManageCustomers.setOnClickListener {
             showCustomersDialog()
+        }
+
+        binding.btnManageProducts.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, ProductsFragment())
+                .addToBackStack(null)
+                .commit()
         }
     }
 
@@ -236,33 +245,35 @@ class DashboardFragment : Fragment() {
     }
 
     private fun loadOverview() {
-        val context = context ?: return
-        val token = SessionManager.getToken(context)
+        val ctx = context ?: return
+        val token = SessionManager.getToken(ctx)
         if (token.isNullOrEmpty()) {
-            SessionManager.clearSession(context)
             return
         }
 
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.getAdminOverview("Bearer $token")
+                val currentBinding = _binding ?: return@launch
                 if (response.isSuccessful && response.body() != null) {
                     val metrics = response.body()?.metrics
                     if (metrics != null) {
-                        binding.tvSalesRevenue.text = "$${metrics.totalSalesRevenue ?: 0.0}"
-                        binding.tvMonthlyRental.text = "$${metrics.monthlyRentalRevenue ?: 0.0}"
-                        binding.tvActiveRentals.text = "${metrics.activeRentalsCount ?: 0}"
-                        binding.tvStock.text = "${metrics.panelsInWarehouse ?: 0}"
+                        currentBinding.tvSalesRevenue.text = "$${metrics.totalSalesRevenue}"
+                        currentBinding.tvMonthlyRental.text = "$${metrics.monthlyRentalRevenue}"
+                        currentBinding.tvActiveRentals.text = "${metrics.activeRentalsCount}"
+                        currentBinding.tvStock.text = "${metrics.panelsInWarehouse}"
                     }
                 } else if (response.code() == 401 || response.code() == 403) {
-                    Toast.makeText(context, "Session expired, please log in again", Toast.LENGTH_SHORT).show()
-                    SessionManager.clearSession(context)
+                    val validContext = context ?: return@launch
+                    Toast.makeText(validContext, "Session expired, please log in again", Toast.LENGTH_SHORT).show()
                 } else {
-                    Log.e("API_DEBUG", "Error: ${response.code()} Body: ${response.errorBody()?.string()}")
-                    Toast.makeText(context, "Failed to load overview: ${response.code()}", Toast.LENGTH_SHORT).show()
+                    val validContext = context ?: return@launch
+                    Log.e("API_DEBUG", "Error: ${response.code()}")
+                    Toast.makeText(validContext, "Failed to load overview: ${response.code()}", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                val validContext = context ?: return@launch
+                Toast.makeText(validContext, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

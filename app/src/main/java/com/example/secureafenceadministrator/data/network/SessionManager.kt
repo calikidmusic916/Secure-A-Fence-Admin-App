@@ -6,11 +6,22 @@ import com.example.secureafenceadministrator.ui.auth.LoginActivity
 
 object SessionManager {
     fun getToken(context: Context): String? {
-        return context.getSharedPreferences("prefs", Context.MODE_PRIVATE).getString("token", null)
+        val rawToken = context.getSharedPreferences("prefs", Context.MODE_PRIVATE).getString("token", null)
+        if (rawToken.isNullOrEmpty()) return null
+        return if (rawToken.startsWith("Bearer ", ignoreCase = true)) {
+            rawToken.substring(7).trim()
+        } else {
+            rawToken.trim()
+        }
     }
 
     fun saveToken(context: Context, token: String) {
-        context.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("token", token).apply()
+        val cleanToken = if (token.startsWith("Bearer ", ignoreCase = true)) {
+            token.substring(7).trim()
+        } else {
+            token.trim()
+        }
+        context.getSharedPreferences("prefs", Context.MODE_PRIVATE).edit().putString("token", cleanToken).apply()
     }
 
     fun clearSession(context: Context) {

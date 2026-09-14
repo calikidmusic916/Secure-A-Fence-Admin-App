@@ -31,9 +31,9 @@ class ModelSerializationTest {
 
         val response = gson.fromJson(json, LoginResponse::class.java)
         assertEquals("test-jwt-token-123", response.token)
-        assertEquals("u1", response.user.id)
-        assertEquals("Admin User", response.user.name)
-        assertEquals("admin", response.user.role)
+        assertEquals("u1", response.user?.id)
+        assertEquals("Admin User", response.user?.name)
+        assertEquals("admin", response.user?.role)
     }
 
     @Test
@@ -54,8 +54,8 @@ class ModelSerializationTest {
 
         val overview = gson.fromJson(json, AdminOverviewResponse::class.java)
         assertNotNull(overview.metrics)
-        assertEquals(50000.0, overview.metrics.totalSalesRevenue, 0.001)
-        assertEquals(350, overview.metrics.panelsInWarehouse)
-        assertEquals(10, overview.metrics.activeRentalsCount)
+        assertEquals(50000.0, overview.metrics?.totalSalesRevenue ?: 0.0, 0.001)
+        assertEquals(350, overview.metrics?.panelsInWarehouse)
+        assertEquals(10, overview.metrics?.activeRentalsCount)
     }
 }

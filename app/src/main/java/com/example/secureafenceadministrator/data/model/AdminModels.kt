@@ -7,8 +7,12 @@ data class LoginRequest(
 
 data class LoginResponse(
     val token: String? = null,
+    val accessToken: String? = null,
+    val jwt: String? = null,
     val user: User? = null
-)
+) {
+    fun fetchToken(): String? = token ?: accessToken ?: jwt
+}
 
 data class User(
     val id: String = "",

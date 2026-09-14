@@ -51,14 +51,14 @@ class CustomersFragment : Fragment() {
                     val customers = response.body()!!
                     val adapter = GenericAdapter(
                         customers,
-                        titleProvider = { it.name.orEmpty().ifEmpty { "Unnamed Customer" } },
+                        titleProvider = { it.name.ifEmpty { "Unnamed Customer" } },
                         subtitleProvider = { 
                             val taxStatus = if (it.isTaxable) "Taxable (8%)" else "Tax Exempt"
                             "Company: ${it.company ?: "N/A"}\nBusiness Address: ${it.businessAddress ?: "N/A"}\nEmail: ${it.email}\nPhone: ${it.phone ?: "N/A"}\nTax: $taxStatus" 
                         },
                         statusProvider = { 
                             val jobsCount = it.jobsites?.size ?: 0
-                            val roleText = it.role.orEmpty().ifEmpty { "customer" }.uppercase()
+                            val roleText = it.role.ifEmpty { "customer" }.uppercase()
                             "Role: $roleText | $jobsCount Jobsites" 
                         },
                         onItemClick = { showCustomerDetails(it) }
@@ -76,7 +76,7 @@ class CustomersFragment : Fragment() {
     private fun showCustomerDetails(customer: Customer) {
         val context = context ?: return
         val builder = AlertDialog.Builder(context)
-        builder.setTitle(customer.name.orEmpty().ifEmpty { "Customer Details" })
+        builder.setTitle(customer.name.ifEmpty { "Customer Details" })
 
         val taxStatus = if (customer.isTaxable) "Taxable (8% Sales Tax)" else "Tax Exempt (0% Tax)"
         val jobsitesList = customer.jobsites
@@ -91,7 +91,7 @@ class CustomersFragment : Fragment() {
             jobsitesSummary += "\nNo jobsites created yet."
         }
 
-        val roleText = customer.role.orEmpty().ifEmpty { "customer" }.uppercase()
+        val roleText = customer.role.ifEmpty { "customer" }.uppercase()
 
         val details = """
             Email: ${customer.email}

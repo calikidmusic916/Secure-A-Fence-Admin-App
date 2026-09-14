@@ -178,5 +178,11 @@
             android:layout_height="wrap_content"
             android:text="Manage Customers"/>
 
+        <Button
+            android:id="@+id/btnManageProducts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Products Catalog &amp; Inventory"/>
+
     </LinearLayout>
 </ScrollView>

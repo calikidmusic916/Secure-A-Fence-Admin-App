@@ -48,19 +48,18 @@ class LoginActivity : AppCompatActivity() {
             try {
                 val response = ApiClient.instance.login(LoginRequest(email.trim(), pass.trim()))
                 val loginBody = response.body()
-                val token = loginBody?.token
+                val token = loginBody?.fetchToken() ?: loginBody?.token
 
                 if (response.isSuccessful && !token.isNullOrEmpty()) {
-                    val userRole = loginBody?.user?.role ?: "admin"
-                    if (userRole.contains("admin", ignoreCase = true) || userRole.contains("owner", ignoreCase = true) || userRole.contains("authenticated", ignoreCase = true) || userRole.contains("customer", ignoreCase = true)) {
-                        SessionManager.saveToken(this@LoginActivity, token)
-                        startActivity(Intent(this@LoginActivity, MainActivity::class.java))
-                        finish()
-                    } else {
-                        Toast.makeText(this@LoginActivity, "Login Failed: Admin required (Role: $userRole)", Toast.LENGTH_LONG).show()
-                    }
+                    SessionManager.saveToken(this@LoginActivity, token)
+                    startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                    finish()
                 } else {
-                    val errText = response.errorBody()?.string() ?: "Invalid credentials"
+                    val errText = try {
+                        response.errorBody()?.string() ?: "Invalid credentials"
+                    } catch (e: Exception) {
+                        "Invalid credentials"
+                    }
                     Toast.makeText(this@LoginActivity, "Login Failed: $errText", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
