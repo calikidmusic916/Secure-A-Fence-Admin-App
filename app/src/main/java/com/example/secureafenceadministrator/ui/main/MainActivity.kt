@@ -48,10 +48,6 @@ class MainActivity : AppCompatActivity() {
                     loadFragment(InvoicesFragment())
                     true
                 }
-                R.id.nav_products -> {
-                    loadFragment(ProductsFragment())
-                    true
-                }
                 R.id.nav_customers -> {
                     loadFragment(CustomersFragment())
                     true

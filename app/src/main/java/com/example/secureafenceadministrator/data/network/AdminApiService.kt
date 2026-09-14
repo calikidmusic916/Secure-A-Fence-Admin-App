@@ -77,6 +77,18 @@ interface AdminApiService {
         @Path("id") rentalId: String
     ): Response<Map<String, Any>>
 
+    @POST("api/admin/rentals/{id}/invoice")
+    suspend fun generateMonthlyRentalInvoice(
+        @Header("Authorization") token: String,
+        @Path("id") rentalId: String
+    ): Response<Map<String, Any>>
+
+    @DELETE("api/admin/rentals/{id}")
+    suspend fun deleteRental(
+        @Header("Authorization") token: String,
+        @Path("id") rentalId: String
+    ): Response<Map<String, Any>>
+
     @POST("api/admin/shipments/pickup")
     suspend fun schedulePickup(
         @Header("Authorization") token: String,

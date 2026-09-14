@@ -13,9 +13,6 @@
         android:id="@+id/nav_invoices"
         android:title="Invoices" />
     <item
-        android:id="@+id/nav_products"
-        android:title="Products" />
-    <item
         android:id="@+id/nav_customers"
         android:title="Customers" />
 </menu>
