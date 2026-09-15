@@ -457,6 +457,13 @@ class CustomersFragment : Fragment() {
         val cbIsTaxable = view.findViewById<CheckBox>(R.id.cb_is_taxable)
         val spRole = view.findViewById<Spinner>(R.id.sp_cust_role)
 
+        val etJobName = view.findViewById<EditText>(R.id.et_init_jobsite_name)
+        val etJobAddr = view.findViewById<EditText>(R.id.et_init_jobsite_address)
+        val etJobContact = view.findViewById<EditText>(R.id.et_init_jobsite_contact_name)
+        val etJobPhone = view.findViewById<EditText>(R.id.et_init_jobsite_contact_phone)
+        val etJobNotes = view.findViewById<EditText>(R.id.et_init_jobsite_instructions)
+        val etJobDist = view.findViewById<EditText>(R.id.et_init_jobsite_distance)
+
         val roles = arrayOf("customer", "admin")
         spRole.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, roles)
 
@@ -469,6 +476,16 @@ class CustomersFragment : Fragment() {
             cbIsTaxable.isChecked = it.isTaxable
             val roleIdx = roles.indexOf(it.role)
             if (roleIdx >= 0) spRole.setSelection(roleIdx)
+
+            if (!it.jobsites.isNullOrEmpty()) {
+                val firstJob = it.jobsites[0]
+                etJobName.setText(firstJob.name)
+                etJobAddr.setText(firstJob.address)
+                etJobContact.setText(firstJob.contactName)
+                etJobPhone.setText(firstJob.contactPhone)
+                etJobNotes.setText(firstJob.specialInstructions)
+                etJobDist.setText(firstJob.deliveryDistanceMiles.toString())
+            }
         }
 
         builder.setView(view)
@@ -482,6 +499,27 @@ class CustomersFragment : Fragment() {
                 return@setPositiveButton
             }
 
+            val jobsitesList = (customer?.jobsites ?: emptyList()).toMutableList()
+            val siteName = etJobName.text.toString().trim()
+            val siteAddr = etJobAddr.text.toString().trim()
+
+            if (siteName.isNotEmpty() || siteAddr.isNotEmpty()) {
+                val initJobsite = Jobsite(
+                    id = jobsitesList.firstOrNull()?.id ?: ("site-" + System.currentTimeMillis()),
+                    name = siteName.ifEmpty { "Primary Jobsite" },
+                    address = siteAddr,
+                    contactName = etJobContact.text.toString().trim(),
+                    contactPhone = etJobPhone.text.toString().trim(),
+                    specialInstructions = etJobNotes.text.toString().trim(),
+                    deliveryDistanceMiles = etJobDist.text.toString().toDoubleOrNull() ?: 0.0
+                )
+                if (jobsitesList.isNotEmpty()) {
+                    jobsitesList[0] = initJobsite
+                } else {
+                    jobsitesList.add(initJobsite)
+                }
+            }
+
             val request = CreateCustomerRequest(
                 name = name,
                 email = email,
@@ -491,7 +529,7 @@ class CustomersFragment : Fragment() {
                 isTaxable = cbIsTaxable.isChecked,
                 businessAddress = etBusinessAddress.text.toString().trim(),
                 password = password.ifEmpty { null },
-                jobsites = customer?.jobsites
+                jobsites = jobsitesList
             )
 
             saveCustomer(customer?.id, request)

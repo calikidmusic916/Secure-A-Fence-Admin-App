@@ -1,74 +1,184 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
     android:padding="16dp">
 
-    <EditText
-        android:id="@+id/et_cust_name"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Full Name"
-        android:inputType="textPersonName" />
+        android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/et_cust_email"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="Email Address (Account Username)"
-        android:inputType="textEmailAddress" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="👤 Customer Profile &amp; Account Info"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="8dp"/>
 
-    <EditText
-        android:id="@+id/et_cust_password"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="Account Password"
-        android:inputType="textPassword" />
+        <EditText
+            android:id="@+id/et_cust_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Full Name"
+            android:inputType="textPersonName"
+            android:textSize="14sp"/>
 
-    <EditText
-        android:id="@+id/et_cust_company"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="Company / Contractor Name"
-        android:inputType="textCapWords" />
+        <EditText
+            android:id="@+id/et_cust_email"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Email Address (Account Username)"
+            android:inputType="textEmailAddress"
+            android:textSize="14sp"/>
 
-    <EditText
-        android:id="@+id/et_cust_phone"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="Phone Number"
-        android:inputType="phone" />
+        <EditText
+            android:id="@+id/et_cust_password"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Account Password"
+            android:inputType="textPassword"
+            android:textSize="14sp"/>
 
-    <EditText
-        android:id="@+id/et_cust_business_address"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="Business / Billing Address"
-        android:inputType="textPostalAddress" />
+        <EditText
+            android:id="@+id/et_cust_company"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Company / Contractor Name"
+            android:inputType="textCapWords"
+            android:textSize="14sp"/>
 
-    <com.google.android.material.checkbox.MaterialCheckBox
-        android:id="@+id/cb_is_taxable"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Taxable Customer (8% Sales Tax)"
-        android:checked="true" />
+        <EditText
+            android:id="@+id/et_cust_phone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Phone Number"
+            android:inputType="phone"
+            android:textSize="14sp"/>
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="User Role" />
+        <EditText
+            android:id="@+id/et_cust_business_address"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Business / Billing Address"
+            android:inputType="textPostalAddress"
+            android:textSize="14sp"/>
 
-    <Spinner
-        android:id="@+id/sp_cust_role"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
+        <com.google.android.material.checkbox.MaterialCheckBox
+            android:id="@+id/cb_is_taxable"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Taxable Customer (8% Sales Tax)"
+            android:checked="true"
+            android:textSize="13sp"/>
 
-</LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="User Role: "
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:layout_marginEnd="6dp"/>
+
+            <Spinner
+                android:id="@+id/sp_cust_role"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#DDDDDD"
+            android:layout_marginVertical="8dp"/>
+
+        <!-- Initial Jobsite Section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📍 Primary Jobsite Location (Optional)"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="8dp"/>
+
+        <EditText
+            android:id="@+id/et_init_jobsite_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Jobsite Name (e.g. Tower B / Main Yard)"
+            android:inputType="textCapWords"
+            android:textSize="14sp"/>
+
+        <EditText
+            android:id="@+id/et_init_jobsite_address"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Jobsite Physical Address"
+            android:inputType="textPostalAddress"
+            android:textSize="14sp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <EditText
+                android:id="@+id/et_init_jobsite_contact_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Site Contact Person"
+                android:inputType="textPersonName"
+                android:textSize="13sp"
+                android:layout_marginEnd="4dp"/>
+
+            <EditText
+                android:id="@+id/et_init_jobsite_contact_phone"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Site Contact Phone"
+                android:inputType="phone"
+                android:textSize="13sp"/>
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/et_init_jobsite_instructions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Special Delivery / Gate Instructions"
+            android:inputType="textMultiLine"
+            android:lines="2"
+            android:textSize="13sp"/>
+
+        <EditText
+            android:id="@+id/et_init_jobsite_distance"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="Delivery Distance from Yard (Miles)"
+            android:inputType="numberDecimal"
+            android:textSize="13sp"/>
+
+    </LinearLayout>
+</ScrollView>
