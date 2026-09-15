@@ -20,21 +20,44 @@
             android:textColor="@android:color/black"
             android:layout_marginBottom="12dp"/>
 
-        <!-- Customer Information Section Header -->
+        <!-- Customer Selection Header -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="👤 Customer &amp; Delivery Information"
-            android:textSize="15sp"
+            android:text="👤 Select Existing Customer Account (Required)"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="@android:color/holo_blue_dark"
-            android:layout_marginBottom="6dp"/>
+            android:layout_marginBottom="4dp"/>
 
+        <Spinner
+            android:id="@+id/spCheckoutCustomer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"/>
+
+        <!-- Jobsite Selection Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📍 Select Registered Jobsite Location"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="4dp"/>
+
+        <Spinner
+            android:id="@+id/spCheckoutJobsite"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Contact Details -->
         <EditText
             android:id="@+id/etCheckoutCustomerName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Customer Full Name (e.g. John Doe)"
+            android:hint="Customer Name"
             android:inputType="textPersonName"
             android:textSize="14sp"
             android:layout_marginBottom="4dp"/>
@@ -43,7 +66,7 @@
             android:id="@+id/etCheckoutCompany"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Company Name (Optional)"
+            android:hint="Company Name"
             android:inputType="text"
             android:textSize="14sp"
             android:layout_marginBottom="4dp"/>

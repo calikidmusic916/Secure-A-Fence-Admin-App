@@ -33,6 +33,25 @@ interface AdminApiService {
         @Body request: OrderPaymentUpdateRequest
     ): Response<Map<String, Any>>
 
+    @PUT("api/admin/sales/{id}")
+    suspend fun updateOrder(
+        @Header("Authorization") token: String,
+        @Path("id") orderId: String,
+        @Body order: Order
+    ): Response<Map<String, Any>>
+
+    @DELETE("api/admin/sales/{id}")
+    suspend fun deleteOrder(
+        @Header("Authorization") token: String,
+        @Path("id") orderId: String
+    ): Response<Map<String, Any>>
+
+    @DELETE("api/admin/invoices/{id}")
+    suspend fun deleteInvoice(
+        @Header("Authorization") token: String,
+        @Path("id") invoiceId: String
+    ): Response<Map<String, Any>>
+
     @GET("api/admin/rentals")
     suspend fun getRentals(@Header("Authorization") token: String): Response<List<Rental>>
 
@@ -58,6 +77,12 @@ interface AdminApiService {
         @Header("Authorization") token: String,
         @Path("id") shipmentId: String,
         @Part photo: MultipartBody.Part
+    ): Response<Map<String, Any>>
+
+    @DELETE("api/admin/shipments/{id}")
+    suspend fun deleteShipment(
+        @Header("Authorization") token: String,
+        @Path("id") shipmentId: String
     ): Response<Map<String, Any>>
 
     @POST("api/admin/sales")

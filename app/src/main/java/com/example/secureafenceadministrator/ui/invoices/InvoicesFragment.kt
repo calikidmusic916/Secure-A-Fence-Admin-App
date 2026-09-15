@@ -2,15 +2,22 @@ package com.example.secureafenceadministrator.ui.invoices
 
 import android.app.AlertDialog
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.TextView
 import android.widget.Toast
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -18,6 +25,8 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.data.model.CreateInvoiceRequest
+import com.example.secureafenceadministrator.data.model.Customer
+import com.example.secureafenceadministrator.data.model.Jobsite
 import com.example.secureafenceadministrator.data.model.Order
 import com.example.secureafenceadministrator.data.model.OrderItem
 import com.example.secureafenceadministrator.data.model.OrderPaymentUpdateRequest
@@ -27,6 +36,7 @@ import com.example.secureafenceadministrator.data.model.StatusUpdateRequest
 import com.example.secureafenceadministrator.data.network.ApiClient
 import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.DialogCartCheckoutBinding
+import com.example.secureafenceadministrator.databinding.DialogInvoiceDetailsBinding
 import com.example.secureafenceadministrator.databinding.DialogOrderCatalogBinding
 import com.example.secureafenceadministrator.databinding.FragmentInvoicesBinding
 import com.example.secureafenceadministrator.databinding.ItemProductCatalogBinding
@@ -43,6 +53,9 @@ class InvoicesFragment : Fragment() {
     private var _binding: FragmentInvoicesBinding? = null
     private val binding get() = _binding!!
 
+    private var salesOrdersList = mutableListOf<Order>()
+    private var completedInvoicesList = mutableListOf<Order>()
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentInvoicesBinding.inflate(inflater, container, false)
         return binding.root
@@ -50,7 +63,9 @@ class InvoicesFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        binding.recyclerViewSalesOrders.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerViewInvoices.layoutManager = LinearLayoutManager(requireContext())
+
         loadInvoices()
 
         binding.btnCreateInvoice.setOnClickListener {
@@ -107,7 +122,7 @@ class InvoicesFragment : Fragment() {
                 price * qty
             }
             dialogBinding.tvCartItemCount.text = "🛒 Cart: $totalItems item(s)"
-            dialogBinding.tvCartTotalAmount.text = "Subtotal: $" + String.format("%.2f", subtotal)
+            dialogBinding.tvCartTotalAmount.text = "Subtotal: $" + String.format(Locale.US, "%.2f", subtotal)
         }
 
         class CatalogAdapter : RecyclerView.Adapter<CatalogAdapter.ViewHolder>() {
@@ -126,7 +141,7 @@ class InvoicesFragment : Fragment() {
 
                 val priceVal = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
                 val priceUnit = if (isRentalOrder) "/ mo" else "/ unit"
-                holder.binding.tvCatalogPrice.text = "$" + String.format("%.2f", priceVal) + " " + priceUnit
+                holder.binding.tvCatalogPrice.text = "$" + String.format(Locale.US, "%.2f", priceVal) + " " + priceUnit
 
                 val currentQty = cartMap[product] ?: 0
                 holder.binding.tvItemCartQty.text = currentQty.toString()
@@ -202,10 +217,94 @@ class InvoicesFragment : Fragment() {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
+        lifecycleScope.launch {
+            try {
+                val customersResponse = ApiClient.instance.getCustomers("Bearer $token")
+                val customersList = if (customersResponse.isSuccessful && !customersResponse.body().isNullOrEmpty()) {
+                    customersResponse.body()!!
+                } else {
+                    emptyList()
+                }
+
+                if (customersList.isEmpty()) {
+                    AlertDialog.Builder(context)
+                        .setTitle("⚠️ Customer Account Required")
+                        .setMessage("Customer must already exist in the system to place an order. Please navigate to the Customers tab to create the customer account first.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                    return@launch
+                }
+
+                openCheckoutWithCustomers(isRentalOrder, cartMap, customersList)
+
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error loading customers: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun openCheckoutWithCustomers(
+        isRentalOrder: Boolean,
+        cartMap: Map<Product, Int>,
+        customersList: List<Customer>
+    ) {
+        val context = context ?: return
+        val token = SessionManager.getToken(context) ?: return
+
         val checkoutBinding = DialogCartCheckoutBinding.inflate(LayoutInflater.from(context))
 
         val orderTypeStr = if (isRentalOrder) "rental" else "sale"
         checkoutBinding.tvCheckoutTitle.text = "🛒 Review Order (${orderTypeStr.uppercase()})"
+
+        val customerNamesList = customersList.map {
+            val company = if (!it.company.isNullOrEmpty()) " (${it.company})" else ""
+            "${it.name} - ${it.email}$company"
+        }.toTypedArray()
+
+        checkoutBinding.spCheckoutCustomer.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, customerNamesList)
+
+        var selectedCustomer = customersList[0]
+
+        fun populateCustomerFields(customer: Customer) {
+            selectedCustomer = customer
+            checkoutBinding.etCheckoutCustomerName.setText(customer.name)
+            checkoutBinding.etCheckoutCompany.setText(customer.company.orEmpty())
+            checkoutBinding.etCheckoutPhone.setText(customer.phone.orEmpty())
+            checkoutBinding.etCheckoutEmail.setText(customer.email)
+            checkoutBinding.etCheckoutDeliveryAddress.setText(customer.businessAddress.orEmpty())
+
+            val jobsites = customer.jobsites ?: emptyList()
+            if (jobsites.isNotEmpty()) {
+                val siteNames = jobsites.map { "${it.name} (${it.address})" }.toTypedArray()
+                checkoutBinding.spCheckoutJobsite.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, siteNames)
+            } else {
+                checkoutBinding.spCheckoutJobsite.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, arrayOf("No registered jobsites"))
+            }
+        }
+
+        populateCustomerFields(selectedCustomer)
+
+        checkoutBinding.spCheckoutCustomer.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                populateCustomerFields(customersList[position])
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        checkoutBinding.spCheckoutJobsite.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val jobsites = selectedCustomer.jobsites ?: emptyList()
+                if (position in jobsites.indices) {
+                    val jobsite = jobsites[position]
+                    checkoutBinding.etCheckoutDeliveryAddress.setText(jobsite.address)
+                    if (!jobsite.contactName.isNullOrEmpty()) checkoutBinding.etCheckoutCustomerName.setText(jobsite.contactName)
+                    if (!jobsite.contactPhone.isNullOrEmpty()) checkoutBinding.etCheckoutPhone.setText(jobsite.contactPhone)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
 
         val itemsSummary = StringBuilder()
         var subtotal = 0.0
@@ -214,19 +313,19 @@ class InvoicesFragment : Fragment() {
             val unitPrice = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
             val lineTotal = unitPrice * qty
             subtotal += lineTotal
-            itemsSummary.append("• ${qty}x ${product.name} @ $${String.format("%.2f", unitPrice)} = $${String.format("%.2f", lineTotal)}\n")
+            itemsSummary.append("• ${qty}x ${product.name} @ $${String.format(Locale.US, "%.2f", unitPrice)} = $${String.format(Locale.US, "%.2f", lineTotal)}\n")
         }
 
         checkoutBinding.tvCheckoutItemsList.text = itemsSummary.toString().trim()
 
         val deliveryFee = if (subtotal > 0) 50.0 else 0.0
-        val tax = Math.round(subtotal * 0.08 * 100.0) / 100.0
+        val tax = if (selectedCustomer.isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
         val grandTotal = subtotal + deliveryFee + tax
 
-        checkoutBinding.tvCheckoutSubtotal.text = "Subtotal: $" + String.format("%.2f", subtotal)
-        checkoutBinding.tvCheckoutDeliveryFee.text = "Delivery Transport Fee: $" + String.format("%.2f", deliveryFee)
-        checkoutBinding.tvCheckoutTax.text = "Tax (8%): $" + String.format("%.2f", tax)
-        checkoutBinding.tvCheckoutGrandTotal.text = "Grand Total: $" + String.format("%.2f", grandTotal)
+        checkoutBinding.tvCheckoutSubtotal.text = "Subtotal: $" + String.format(Locale.US, "%.2f", subtotal)
+        checkoutBinding.tvCheckoutDeliveryFee.text = "Delivery Transport Fee: $" + String.format(Locale.US, "%.2f", deliveryFee)
+        checkoutBinding.tvCheckoutTax.text = "Tax (8%): $" + String.format(Locale.US, "%.2f", tax)
+        checkoutBinding.tvCheckoutGrandTotal.text = "Grand Total: $" + String.format(Locale.US, "%.2f", grandTotal)
 
         val dialog = AlertDialog.Builder(context)
             .setView(checkoutBinding.root)
@@ -262,7 +361,7 @@ class InvoicesFragment : Fragment() {
 
             val newOrder = Order(
                 id = orderId,
-                customerId = "cust-" + System.currentTimeMillis(),
+                customerId = selectedCustomer.id,
                 customerName = customerName,
                 customerCompany = company,
                 customerEmail = email,
@@ -299,18 +398,7 @@ class InvoicesFragment : Fragment() {
                         )
                     )
 
-                    // 3. Auto-generate Invoice for Order
-                    ApiClient.instance.createInvoice(
-                        "Bearer $token",
-                        CreateInvoiceRequest(
-                            orderId = orderId,
-                            customerName = customerName,
-                            amount = grandTotal,
-                            status = "unpaid"
-                        )
-                    )
-
-                    Toast.makeText(context, "🎉 Order #$orderId placed successfully!\nDispatched to Shipping Queue (Processing).", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "🎉 Order #$orderId placed & added to Shipping Queue (Processing)!", Toast.LENGTH_LONG).show()
 
                     dialog.dismiss()
                     loadInvoices()
@@ -403,9 +491,38 @@ class InvoicesFragment : Fragment() {
             try {
                 val response = ApiClient.instance.getSalesOrders("Bearer $token")
                 if (response.isSuccessful && response.body() != null) {
-                    val orders = response.body()!!
-                    val adapter = GenericAdapter(
-                        orders,
+                    val allOrders = response.body()!!
+
+                    salesOrdersList = allOrders.filter {
+                        !it.status.equals("Delivered", ignoreCase = true) &&
+                        !it.status.equals("Picked Up / Returned", ignoreCase = true) &&
+                        !it.status.equals("Completed", ignoreCase = true)
+                    }.toMutableList()
+
+                    completedInvoicesList = allOrders.filter {
+                        it.status.equals("Delivered", ignoreCase = true) ||
+                        it.status.equals("Picked Up / Returned", ignoreCase = true) ||
+                        it.status.equals("Completed", ignoreCase = true)
+                    }.toMutableList()
+
+                    binding.tvSalesOrdersHeader.text = "📦 Active Sales Orders (Pending Delivery / Pickup) (${salesOrdersList.size})"
+                    binding.tvCompletedInvoicesHeader.text = "📄 Invoices (Delivered & Completed Orders) (${completedInvoicesList.size})"
+
+                    val salesAdapter = GenericAdapter(
+                        salesOrdersList,
+                        titleProvider = { "${it.orderType.uppercase()} #${it.id}" },
+                        subtitleProvider = { 
+                            val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item -> "${item.quantity}x ${item.name}" }
+                            "Customer: ${it.customerName}\nItems: $itemsSummary\nAmount: $${it.totalAmount}"
+                        },
+                        statusProvider = { "Status: ${it.status.uppercase()} [PENDING DELIVERY] | Payment: ${it.paymentStatus ?: "Unpaid"}" },
+                        rightImageResIdProvider = { R.drawable.logo },
+                        onItemClick = { showOrderDetailsDialog(it) }
+                    )
+                    binding.recyclerViewSalesOrders.adapter = salesAdapter
+
+                    val completedAdapter = GenericAdapter(
+                        completedInvoicesList,
                         titleProvider = { "${it.orderType.uppercase()} #${it.id}" },
                         subtitleProvider = { 
                             val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item ->
@@ -414,11 +531,12 @@ class InvoicesFragment : Fragment() {
                             }
                             "Customer: ${it.customerName}\nItems: $itemsSummary\nAmount: $${it.totalAmount}"
                         },
-                        statusProvider = { "Status: ${it.status} | Payment: ${it.paymentStatus ?: "Unpaid"}" },
+                        statusProvider = { "Status: ${it.status.uppercase()} [INVOICED] | Payment: ${it.paymentStatus ?: "Unpaid"}" },
                         rightImageResIdProvider = { R.drawable.logo },
                         onItemClick = { showOrderDetailsDialog(it) }
                     )
-                    binding.recyclerViewInvoices.adapter = adapter
+                    binding.recyclerViewInvoices.adapter = completedAdapter
+
                 } else if (response.code() == 401) {
                     Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
                     SessionManager.clearSession(context)
@@ -433,48 +551,176 @@ class InvoicesFragment : Fragment() {
 
     private fun showOrderDetailsDialog(order: Order) {
         val context = context ?: return
-        val builder = AlertDialog.Builder(context)
-        builder.setTitle("Order & Invoice #${order.id}")
+        val token = SessionManager.getToken(context) ?: return
+        val dialogBinding = DialogInvoiceDetailsBinding.inflate(LayoutInflater.from(context))
 
-        val detailText = StringBuilder()
-        detailText.append("Customer: ${order.customerName}\n")
-        detailText.append("Company: ${order.customerCompany}\n")
-        detailText.append("Phone: ${order.customerPhone}\n")
-        detailText.append("Address: ${order.deliveryAddress}\n")
-        detailText.append("Delivery Date: ${order.deliveryDate}\n")
-        detailText.append("Status: ${order.status}\n")
-        detailText.append("Payment Status: ${order.paymentStatus ?: "Unpaid"} (${order.paymentMethod ?: "None"})\n\n")
+        dialogBinding.tvInvoiceDialogTitle.text = "📄 ${order.orderType.uppercase()} Details #${order.id}"
 
-        detailText.append("--- Line Items (Ordered vs Delivered) ---\n")
-        if (order.items.isNullOrEmpty()) {
-            detailText.append("• 1x Custom Temporary Fence Package @ $${order.subtotal}\n")
-        } else {
-            for (item in order.items) {
-                val delQty = item.deliveredQuantity ?: item.quantity
-                detailText.append("• ${item.name}\n  Ordered: ${item.quantity} | Delivered: $delQty @ $${item.unitPrice} = $${item.total}\n")
+        val isInvoiced = order.status.equals("Delivered", ignoreCase = true) || order.status.equals("Picked Up / Returned", ignoreCase = true) || order.status.equals("Completed", ignoreCase = true)
+        val statusText = if (isInvoiced) "Status: ${order.status.uppercase()} (OFFICIALLY INVOICED)" else "Status: ${order.status.uppercase()} (Invoice Issued Upon Delivery/Pickup)"
+        dialogBinding.tvInvoiceStatusBadge.text = statusText
+
+        dialogBinding.etInvoiceCustomerName.setText(order.customerName)
+        dialogBinding.etInvoiceCompany.setText(order.customerCompany)
+        dialogBinding.etInvoicePhone.setText(order.customerPhone)
+        dialogBinding.etInvoiceEmail.setText(order.customerEmail)
+        dialogBinding.etInvoiceDeliveryAddress.setText(order.deliveryAddress)
+
+        val paymentStatuses = arrayOf("Unpaid", "Paid")
+        dialogBinding.spPaymentStatus.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, paymentStatuses)
+        val pIndex = paymentStatuses.indexOfFirst { it.equals(order.paymentStatus, ignoreCase = true) }
+        if (pIndex >= 0) dialogBinding.spPaymentStatus.setSelection(pIndex)
+
+        val paymentMethods = arrayOf("None", "Cash", "CashApp", "Credit Card", "Check", "ACH")
+        dialogBinding.spPaymentMethod.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, paymentMethods)
+        val mIndex = paymentMethods.indexOfFirst { it.equals(order.paymentMethod, ignoreCase = true) }
+        if (mIndex >= 0) dialogBinding.spPaymentMethod.setSelection(mIndex)
+
+        val itemQtyInputs = mutableMapOf<OrderItem, EditText>()
+        val currentItemsList = if (!order.items.isNullOrEmpty()) order.items.toMutableList() else mutableListOf(
+            OrderItem(productId = "prod-1", name = "Custom Temporary Fence Package", unitPrice = order.subtotal, quantity = 1, deliveredQuantity = 1, total = order.subtotal)
+        )
+
+        fun calculateInvoiceGrandTotal(): Double {
+            var subtotal = 0.0
+            for ((item, inputField) in itemQtyInputs) {
+                val qty = inputField.text.toString().toIntOrNull() ?: item.quantity
+                subtotal += (qty * item.unitPrice)
             }
+            val deliveryFee = if (subtotal > 0) 50.0 else 0.0
+            val isTaxable = dialogBinding.cbInvoiceTaxable.isChecked
+            val tax = if (isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
+            val discount = dialogBinding.etInvoiceDiscount.text.toString().toDoubleOrNull() ?: 0.0
+
+            val grandTotal = Math.max(0.0, subtotal + deliveryFee + tax - discount)
+            dialogBinding.tvInvoiceGrandTotal.text = "💰 Grand Total: $" + String.format(Locale.US, "%.2f", grandTotal) + " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) + " + Tax: $" + String.format(Locale.US, "%.2f", tax) + " - Disc: $" + String.format(Locale.US, "%.2f", discount) + ")"
+
+            return grandTotal
         }
-        detailText.append("\n")
-        detailText.append("Subtotal: $${order.subtotal}\n")
-        detailText.append("Delivery Fee: $${order.deliveryFee}\n")
-        detailText.append("Tax (8%): $${order.tax}\n")
-        detailText.append("Total: $${order.totalAmount}\n")
 
-        builder.setMessage(detailText.toString())
+        dialogBinding.llInvoiceItemsContainer.removeAllViews()
+        itemQtyInputs.clear()
 
-        builder.setPositiveButton("Print Invoice (PDF)") { _, _ ->
+        for (item in currentItemsList) {
+            val itemLayout = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 8, 0, 8)
+            }
+
+            val tvLabel = TextView(context).apply {
+                val delStr = if (item.deliveredQuantity != null) " | Delivered: ${item.deliveredQuantity}" else ""
+                text = "• ${item.name}\n  [Ordered: ${item.quantity}$delStr @ $${item.unitPrice}]"
+                textSize = 13f
+                setTypeface(null, Typeface.BOLD)
+            }
+
+            val inputQty = EditText(context).apply {
+                hint = "Quantity"
+                setText((item.deliveredQuantity ?: item.quantity).toString())
+                inputType = InputType.TYPE_CLASS_NUMBER
+                doAfterTextChanged { calculateInvoiceGrandTotal() }
+            }
+
+            itemLayout.addView(tvLabel)
+            itemLayout.addView(inputQty)
+            dialogBinding.llInvoiceItemsContainer.addView(itemLayout)
+            itemQtyInputs[item] = inputQty
+        }
+
+        dialogBinding.cbInvoiceTaxable.setOnCheckedChangeListener { _, _ -> calculateInvoiceGrandTotal() }
+        dialogBinding.etInvoiceDiscount.doAfterTextChanged { calculateInvoiceGrandTotal() }
+
+        calculateInvoiceGrandTotal()
+
+        val dialog = AlertDialog.Builder(context)
+            .setView(dialogBinding.root)
+            .setPositiveButton("Close", null)
+            .create()
+
+        dialogBinding.btnPrintPdfInvoice.setOnClickListener {
             generatePdfInvoice(order)
         }
 
-        builder.setNeutralButton("Mark Paid") { _, _ ->
-            showMarkPaidDialog(order)
+        dialogBinding.btnSaveInvoiceChanges.setOnClickListener {
+            val updatedCustomer = dialogBinding.etInvoiceCustomerName.text.toString().trim()
+            val updatedCompany = dialogBinding.etInvoiceCompany.text.toString().trim()
+            val updatedPhone = dialogBinding.etInvoicePhone.text.toString().trim()
+            val updatedEmail = dialogBinding.etInvoiceEmail.text.toString().trim()
+            val updatedAddress = dialogBinding.etInvoiceDeliveryAddress.text.toString().trim()
+            val selectedPayStatus = dialogBinding.spPaymentStatus.selectedItem.toString()
+            val selectedPayMethod = dialogBinding.spPaymentMethod.selectedItem.toString()
+
+            val updatedItems = itemQtyInputs.map { (item, inputField) ->
+                val qty = inputField.text.toString().toIntOrNull() ?: item.quantity
+                item.copy(deliveredQuantity = qty, quantity = qty, total = qty * item.unitPrice)
+            }
+
+            val finalAmount = calculateInvoiceGrandTotal()
+
+            val updatedOrder = order.copy(
+                customerName = updatedCustomer,
+                customerCompany = updatedCompany,
+                customerPhone = updatedPhone,
+                customerEmail = updatedEmail,
+                deliveryAddress = updatedAddress,
+                items = updatedItems,
+                paymentStatus = selectedPayStatus,
+                paymentMethod = selectedPayMethod,
+                totalAmount = finalAmount
+            )
+
+            lifecycleScope.launch {
+                try {
+                    ApiClient.instance.updateOrder("Bearer $token", order.id, updatedOrder)
+                    ApiClient.instance.updateOrderPayment("Bearer $token", order.id, OrderPaymentUpdateRequest(selectedPayStatus, selectedPayMethod))
+
+                    Toast.makeText(context, "💾 Invoice/Order #${order.id} updated!", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    loadInvoices()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Saved changes: ${e.message}", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    loadInvoices()
+                }
+            }
         }
 
-        builder.setNegativeButton("Update Status") { _, _ ->
-            showUpdateDeliveryStatusDialog(order)
+        dialogBinding.btnMarkInvoicePaid.setOnClickListener {
+            val options = arrayOf("Cash", "CashApp", "Credit Card", "Check", "ACH")
+            AlertDialog.Builder(context)
+                .setTitle("Select Payment Method")
+                .setItems(options) { _, which ->
+                    val selectedMethod = options[which]
+                    updateOrderPayment(order.id, "Paid", selectedMethod)
+                    dialog.dismiss()
+                }
+                .show()
         }
 
-        builder.show()
+        dialogBinding.btnDeleteInvoiceRecord.setOnClickListener {
+            AlertDialog.Builder(context)
+                .setTitle("Delete Invoice Record")
+                .setMessage("Are you sure you want to PERMANENTLY delete invoice/order #${order.id}? This cannot be undone.")
+                .setPositiveButton("Delete Record") { _, _ ->
+                    lifecycleScope.launch {
+                        try {
+                            ApiClient.instance.deleteOrder("Bearer $token", order.id)
+                            ApiClient.instance.deleteInvoice("Bearer $token", order.id)
+                            Toast.makeText(context, "🗑️ Invoice/Order #${order.id} deleted", Toast.LENGTH_SHORT).show()
+                            dialog.dismiss()
+                            loadInvoices()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Deleted: ${e.message}", Toast.LENGTH_SHORT).show()
+                            dialog.dismiss()
+                            loadInvoices()
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        dialog.show()
     }
 
     private fun showMarkPaidDialog(order: Order) {

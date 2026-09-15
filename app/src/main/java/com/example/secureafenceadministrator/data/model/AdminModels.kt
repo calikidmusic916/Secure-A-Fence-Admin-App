@@ -111,7 +111,10 @@ data class Shipment(
     val notes: String = "",
     val eta: String? = "",
     val deliveryPhotos: List<String>? = emptyList(),
-    val deliveredItems: List<OrderItem>? = emptyList()
+    val deliveredItems: List<OrderItem>? = emptyList(),
+    val isTaxable: Boolean = true,
+    val discountAmount: Double = 0.0,
+    val overrideTotal: Double? = null
 )
 
 data class StatusUpdateRequest(
@@ -126,7 +129,10 @@ data class ShipmentUpdateRequest(
     val notes: String? = null,
     val eta: String? = null,
     val deliveryPhotos: List<String>? = null,
-    val deliveredItems: List<OrderItem>? = null
+    val deliveredItems: List<OrderItem>? = null,
+    val isTaxable: Boolean? = null,
+    val discountAmount: Double? = null,
+    val overrideTotal: Double? = null
 )
 
 data class ExtendRentalRequest(

@@ -131,14 +131,16 @@ class DeliveriesFragment : Fragment() {
                         !it.status.equals("Delivered", ignoreCase = true) &&
                         !it.status.equals("Completed", ignoreCase = true) &&
                         !it.status.equals("Returned", ignoreCase = true) &&
-                        !it.status.equals("Picked Up / Returned", ignoreCase = true)
+                        !it.status.equals("Picked Up / Returned", ignoreCase = true) &&
+                        !it.status.equals("Cancelled", ignoreCase = true)
                     }.toMutableList()
 
                     completedShipmentsList = allShipments.filter {
                         it.status.equals("Delivered", ignoreCase = true) ||
                         it.status.equals("Completed", ignoreCase = true) ||
                         it.status.equals("Returned", ignoreCase = true) ||
-                        it.status.equals("Picked Up / Returned", ignoreCase = true)
+                        it.status.equals("Picked Up / Returned", ignoreCase = true) ||
+                        it.status.equals("Cancelled", ignoreCase = true)
                     }.toMutableList()
 
                     binding.tvActiveDeliveriesHeader.text = "🚚 Active Dispatches & Deliveries (${activeShipmentsList.size})"
@@ -163,9 +165,9 @@ class DeliveriesFragment : Fragment() {
                         titleProvider = { "${it.type.ifEmpty { "Delivery" }} #${it.id}" },
                         subtitleProvider = {
                             val photosText = if (!it.deliveryPhotos.isNullOrEmpty()) "\n📸 Proof Photos: ${it.deliveryPhotos.size} uploaded" else ""
-                            "Driver: ${it.driverName.ifEmpty { "Completed" }}\nDest: ${it.destination}\nCompleted Date: ${it.dispatchDate}$photosText"
+                            "Driver: ${it.driverName.ifEmpty { "Completed" }}\nDest: ${it.destination}\nStatus Date: ${it.dispatchDate}$photosText"
                         },
-                        statusProvider = { "Status: ${it.status.uppercase()} (Invoiced)" },
+                        statusProvider = { "Status: ${it.status.uppercase()}" },
                         rightImageResIdProvider = { R.drawable.logo },
                         onItemClick = { showShipmentDetailsDialog(it) }
                     )
@@ -250,7 +252,7 @@ class DeliveriesFragment : Fragment() {
         dialogBinding.etDispatchDate.setText(shipment.dispatchDate)
         dialogBinding.etDestinationAddress.setText(shipment.destination)
 
-        val statuses = arrayOf("Scheduled", "In Route", "Pickup Scheduled", "Delivered", "Picked Up / Returned")
+        val statuses = arrayOf("Scheduled", "In Route", "Pickup Scheduled", "Delivered", "Picked Up / Returned", "Cancelled")
         dialogBinding.spDeliveryStatus.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, statuses)
         val statusIndex = statuses.indexOfFirst { it.equals(shipment.status, ignoreCase = true) }
         if (statusIndex >= 0) dialogBinding.spDeliveryStatus.setSelection(statusIndex)
@@ -279,23 +281,41 @@ class DeliveriesFragment : Fragment() {
 
         dialogBinding.etEtaOrPickupTime.setText(shipment.eta)
         dialogBinding.etDeliveryNotes.setText(shipment.notes)
+        dialogBinding.cbIsTaxable.isChecked = shipment.isTaxable
+        if (shipment.discountAmount > 0) dialogBinding.etDiscountAmount.setText(shipment.discountAmount.toString())
+        if (shipment.overrideTotal != null) dialogBinding.etFinalPriceOverride.setText(shipment.overrideTotal.toString())
+
         dialogBinding.btnUploadProofPhoto.text = "📸 Snap / Upload Proof Photo (${shipment.deliveryPhotos?.size ?: 0} Attached)"
 
         val deliveredQtyInputs = mutableMapOf<OrderItem, EditText>()
         var currentItemsList = mutableListOf<OrderItem>()
 
-        fun recalculatePricePreview() {
+        fun calculateAdjustedTotal(): Double {
             var subtotal = 0.0
             for ((item, inputField) in deliveredQtyInputs) {
                 val actualQty = inputField.text.toString().toIntOrNull() ?: item.quantity
                 subtotal += (actualQty * item.unitPrice)
             }
+            val isTaxable = dialogBinding.cbIsTaxable.isChecked
             val deliveryFee = if (subtotal > 0) 50.0 else 0.0
-            val tax = Math.round(subtotal * 0.08 * 100.0) / 100.0
-            val grandTotal = subtotal + deliveryFee + tax
+            val tax = if (isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
+            val discount = dialogBinding.etDiscountAmount.text.toString().toDoubleOrNull() ?: 0.0
+            val overridePrice = dialogBinding.etFinalPriceOverride.text.toString().toDoubleOrNull()
 
-            dialogBinding.tvAdjustedTotalPreview.text = "💰 Adjusted Total: $" + String.format(Locale.US, "%.2f", grandTotal) + " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) + " + $50 Transport + 8% Tax)"
+            val calculated = Math.max(0.0, subtotal + deliveryFee + tax - discount)
+            val finalTotal = if (overridePrice != null && overridePrice > 0) overridePrice else calculated
+
+            dialogBinding.tvAdjustedTotalPreview.text = "💰 Adjusted Total: $" + String.format(Locale.US, "%.2f", finalTotal) +
+                " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) +
+                " + Tax: $" + String.format(Locale.US, "%.2f", tax) +
+                " - Disc: $" + String.format(Locale.US, "%.2f", discount) + ")"
+
+            return finalTotal
         }
+
+        dialogBinding.cbIsTaxable.setOnCheckedChangeListener { _, _ -> calculateAdjustedTotal() }
+        dialogBinding.etDiscountAmount.doAfterTextChanged { calculateAdjustedTotal() }
+        dialogBinding.etFinalPriceOverride.doAfterTextChanged { calculateAdjustedTotal() }
 
         lifecycleScope.launch {
             try {
@@ -336,7 +356,7 @@ class DeliveriesFragment : Fragment() {
                         hint = "Actual Quantity Delivered / Picked Up"
                         setText((item.deliveredQuantity ?: item.quantity).toString())
                         inputType = InputType.TYPE_CLASS_NUMBER
-                        doAfterTextChanged { recalculatePricePreview() }
+                        doAfterTextChanged { calculateAdjustedTotal() }
                     }
 
                     itemLayout.addView(tvLabel)
@@ -345,7 +365,7 @@ class DeliveriesFragment : Fragment() {
                     deliveredQtyInputs[item] = inputDeliveredQty
                 }
 
-                recalculatePricePreview()
+                calculateAdjustedTotal()
 
             } catch (e: Exception) {
                 Toast.makeText(context, "Error loading order items: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -375,6 +395,9 @@ class DeliveriesFragment : Fragment() {
                 item.copy(deliveredQuantity = qty)
             }
 
+            val discount = dialogBinding.etDiscountAmount.text.toString().toDoubleOrNull() ?: 0.0
+            val overridePrice = dialogBinding.etFinalPriceOverride.text.toString().toDoubleOrNull()
+
             lifecycleScope.launch {
                 try {
                     ApiClient.instance.updateShipment(
@@ -387,7 +410,10 @@ class DeliveriesFragment : Fragment() {
                             destination = updatedDest,
                             notes = updatedNotes,
                             eta = updatedEta,
-                            deliveredItems = updatedDeliveredItems
+                            deliveredItems = updatedDeliveredItems,
+                            isTaxable = dialogBinding.cbIsTaxable.isChecked,
+                            discountAmount = discount,
+                            overrideTotal = overridePrice
                         )
                     )
 
@@ -414,14 +440,7 @@ class DeliveriesFragment : Fragment() {
                 item.copy(deliveredQuantity = qty)
             }
 
-            var adjustedSubtotal = 0.0
-            for (item in updatedDeliveredItems) {
-                val qty = item.deliveredQuantity ?: item.quantity
-                adjustedSubtotal += (qty * item.unitPrice)
-            }
-            val deliveryFee = if (adjustedSubtotal > 0) 50.0 else 0.0
-            val tax = Math.round(adjustedSubtotal * 0.08 * 100.0) / 100.0
-            val adjustedGrandTotal = adjustedSubtotal + deliveryFee + tax
+            val finalAdjustedTotal = calculateAdjustedTotal()
 
             lifecycleScope.launch {
                 try {
@@ -435,7 +454,10 @@ class DeliveriesFragment : Fragment() {
                             status = finalStatus,
                             destination = updatedDest,
                             notes = updatedNotes,
-                            deliveredItems = updatedDeliveredItems
+                            deliveredItems = updatedDeliveredItems,
+                            isTaxable = dialogBinding.cbIsTaxable.isChecked,
+                            discountAmount = dialogBinding.etDiscountAmount.text.toString().toDoubleOrNull() ?: 0.0,
+                            overrideTotal = dialogBinding.etFinalPriceOverride.text.toString().toDoubleOrNull()
                         )
                     )
 
@@ -448,12 +470,12 @@ class DeliveriesFragment : Fragment() {
                         CreateInvoiceRequest(
                             orderId = targetOrderId,
                             customerName = updatedDriver.ifEmpty { "Customer" },
-                            amount = adjustedGrandTotal,
+                            amount = finalAdjustedTotal,
                             status = "unpaid"
                         )
                     )
 
-                    Toast.makeText(context, "✅ Completed! Adjusted invoice issued ($" + String.format(Locale.US, "%.2f", adjustedGrandTotal) + ")", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "✅ Completed! Adjusted invoice issued ($" + String.format(Locale.US, "%.2f", finalAdjustedTotal) + ")", Toast.LENGTH_LONG).show()
 
                     dialog.dismiss()
                     loadDeliveries()
@@ -465,6 +487,55 @@ class DeliveriesFragment : Fragment() {
             }
         }
 
+        dialogBinding.btnCancelDelivery.setOnClickListener {
+            AlertDialog.Builder(context)
+                .setTitle("Cancel Delivery #${shipment.id}")
+                .setMessage("Are you sure you want to cancel this delivery order?")
+                .setPositiveButton("Yes, Cancel Delivery") { _, _ ->
+                    lifecycleScope.launch {
+                        try {
+                            ApiClient.instance.updateShipment(
+                                "Bearer $token",
+                                shipment.id,
+                                ShipmentUpdateRequest(status = "Cancelled")
+                            )
+                            ApiClient.instance.updateOrderStatus("Bearer $token", targetOrderId, StatusUpdateRequest("Cancelled"))
+                            Toast.makeText(context, "🚫 Delivery #${shipment.id} cancelled", Toast.LENGTH_SHORT).show()
+                            dialog.dismiss()
+                            loadDeliveries()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Cancelled locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                            dialog.dismiss()
+                            loadDeliveries()
+                        }
+                    }
+                }
+                .setNegativeButton("No", null)
+                .show()
+        }
+
+        dialogBinding.btnDeleteDelivery.setOnClickListener {
+            AlertDialog.Builder(context)
+                .setTitle("Delete Dispatch Record")
+                .setMessage("Are you sure you want to PERMANENTLY delete dispatch record #${shipment.id}? This cannot be undone.")
+                .setPositiveButton("Delete Record") { _, _ ->
+                    lifecycleScope.launch {
+                        try {
+                            ApiClient.instance.deleteShipment("Bearer $token", shipment.id)
+                            Toast.makeText(context, "🗑️ Dispatch record deleted", Toast.LENGTH_SHORT).show()
+                            dialog.dismiss()
+                            loadDeliveries()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Deleted locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                            dialog.dismiss()
+                            loadDeliveries()
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
         dialogBinding.btnOpenGpsMap.setOnClickListener {
             openGoogleMapsNavigation(dialogBinding.etDestinationAddress.text.toString().trim().ifEmpty { shipment.destination })
         }
@@ -474,7 +545,7 @@ class DeliveriesFragment : Fragment() {
 
     private fun showUpdateStatusAndEtaDialog(shipment: Shipment) {
         val context = context ?: return
-        val statuses = arrayOf("Scheduled", "In Route", "Pickup Scheduled", "Delivered", "Picked Up / Returned")
+        val statuses = arrayOf("Scheduled", "In Route", "Pickup Scheduled", "Delivered", "Picked Up / Returned", "Cancelled")
 
         AlertDialog.Builder(context)
             .setTitle("Update Delivery Status")

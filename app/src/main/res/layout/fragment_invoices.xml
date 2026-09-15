@@ -1,50 +1,86 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
+    android:fillViewport="true"
     android:padding="16dp">
 
-    <!-- Title on Top -->
-    <TextView
-        android:id="@+id/tvInvoicesTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Invoices &amp; Sales Orders"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:textColor="@android:color/black"
-        android:layout_marginBottom="12dp"/>
-
-    <!-- Action Buttons Row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
+        android:orientation="vertical">
 
-        <Button
-            android:id="@+id/btnCreateInvoice"
-            android:layout_width="0dp"
+        <!-- Title Header on Top -->
+        <TextView
+            android:id="@+id/tvInvoicesTitle"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="➕ Invoice"
-            android:textSize="13sp"
-            android:layout_marginEnd="6dp"/>
+            android:text="Invoices &amp; Sales Orders"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/black"
+            android:layout_marginBottom="12dp"/>
 
-        <Button
-            android:id="@+id/btnPlaceOrder"
-            android:layout_width="0dp"
+        <!-- Action Buttons Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="🛒 Order Catalog"
-            android:textSize="13sp"/>
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <Button
+                android:id="@+id/btnCreateInvoice"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="➕ Create Invoice"
+                android:textSize="13sp"
+                android:layout_marginEnd="6dp"/>
+
+            <Button
+                android:id="@+id/btnPlaceOrder"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🛒 Order Catalog"
+                android:textSize="13sp"/>
+        </LinearLayout>
+
+        <!-- Section 1: Sales Orders (Pending Delivery / Pickup) Header -->
+        <TextView
+            android:id="@+id/tvSalesOrdersHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📦 Active Sales Orders (Pending Delivery / Pickup)"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="8dp"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewSalesOrders"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:nestedScrollingEnabled="false"
+            android:layout_marginBottom="24dp"/>
+
+        <!-- Section 2: Invoices (Delivered & Completed Orders) Header -->
+        <TextView
+            android:id="@+id/tvCompletedInvoicesHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📄 Invoices (Delivered &amp; Completed Orders)"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_green_dark"
+            android:layout_marginBottom="8dp"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewInvoices"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:nestedScrollingEnabled="false"
+            android:layout_marginBottom="16dp"/>
+
     </LinearLayout>
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerViewInvoices"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"/>
-
-</LinearLayout>
+</androidx.core.widget.NestedScrollView>
