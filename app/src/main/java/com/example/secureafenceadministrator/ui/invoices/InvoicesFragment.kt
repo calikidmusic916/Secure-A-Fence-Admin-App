@@ -265,8 +265,35 @@ class InvoicesFragment : Fragment() {
 
         var selectedCustomer = customersList[0]
 
-        fun populateCustomerFields(customer: Customer) {
+        val itemsSummary = StringBuilder()
+        var subtotal = 0.0
+
+        for ((product, qty) in cartMap) {
+            val unitPrice = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
+            val lineTotal = unitPrice * qty
+            subtotal += lineTotal
+            itemsSummary.append("• ${qty}x ${product.name} @ $${String.format(Locale.US, "%.2f", unitPrice)} = $${String.format(Locale.US, "%.2f", lineTotal)}\n")
+        }
+
+        checkoutBinding.tvCheckoutItemsList.text = itemsSummary.toString().trim()
+
+        val deliveryFee = if (subtotal > 0) 50.0 else 0.0
+        var currentTax = 0.0
+        var currentGrandTotal = subtotal + deliveryFee
+
+        fun updateFinancials(customer: Customer) {
             selectedCustomer = customer
+            currentTax = if (customer.isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
+            currentGrandTotal = subtotal + deliveryFee + currentTax
+
+            checkoutBinding.tvCheckoutSubtotal.text = "Subtotal: $" + String.format(Locale.US, "%.2f", subtotal)
+            checkoutBinding.tvCheckoutDeliveryFee.text = "Delivery Transport Fee: $" + String.format(Locale.US, "%.2f", deliveryFee)
+            checkoutBinding.tvCheckoutTax.text = if (customer.isTaxable) "Tax (8%): $" + String.format(Locale.US, "%.2f", currentTax) else "Tax: $0.00 (TAX EXEMPT)"
+            checkoutBinding.tvCheckoutGrandTotal.text = "Grand Total: $" + String.format(Locale.US, "%.2f", currentGrandTotal)
+        }
+
+        fun populateCustomerFields(customer: Customer) {
+            updateFinancials(customer)
             checkoutBinding.etCheckoutCustomerName.setText(customer.name)
             checkoutBinding.etCheckoutCompany.setText(customer.company.orEmpty())
             checkoutBinding.etCheckoutPhone.setText(customer.phone.orEmpty())
@@ -305,27 +332,6 @@ class InvoicesFragment : Fragment() {
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-
-        val itemsSummary = StringBuilder()
-        var subtotal = 0.0
-
-        for ((product, qty) in cartMap) {
-            val unitPrice = if (isRentalOrder) product.rentalPriceMonthly else product.salePrice
-            val lineTotal = unitPrice * qty
-            subtotal += lineTotal
-            itemsSummary.append("• ${qty}x ${product.name} @ $${String.format(Locale.US, "%.2f", unitPrice)} = $${String.format(Locale.US, "%.2f", lineTotal)}\n")
-        }
-
-        checkoutBinding.tvCheckoutItemsList.text = itemsSummary.toString().trim()
-
-        val deliveryFee = if (subtotal > 0) 50.0 else 0.0
-        val tax = if (selectedCustomer.isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
-        val grandTotal = subtotal + deliveryFee + tax
-
-        checkoutBinding.tvCheckoutSubtotal.text = "Subtotal: $" + String.format(Locale.US, "%.2f", subtotal)
-        checkoutBinding.tvCheckoutDeliveryFee.text = "Delivery Transport Fee: $" + String.format(Locale.US, "%.2f", deliveryFee)
-        checkoutBinding.tvCheckoutTax.text = "Tax (8%): $" + String.format(Locale.US, "%.2f", tax)
-        checkoutBinding.tvCheckoutGrandTotal.text = "Grand Total: $" + String.format(Locale.US, "%.2f", grandTotal)
 
         val dialog = AlertDialog.Builder(context)
             .setView(checkoutBinding.root)
@@ -370,8 +376,8 @@ class InvoicesFragment : Fragment() {
                 items = orderItems,
                 subtotal = subtotal,
                 deliveryFee = deliveryFee,
-                tax = tax,
-                totalAmount = grandTotal,
+                tax = currentTax,
+                totalAmount = currentGrandTotal,
                 status = "Processing",
                 deliveryAddress = address,
                 jobsiteContact = customerName,
@@ -566,6 +572,8 @@ class InvoicesFragment : Fragment() {
         dialogBinding.etInvoiceEmail.setText(order.customerEmail)
         dialogBinding.etInvoiceDeliveryAddress.setText(order.deliveryAddress)
 
+        dialogBinding.cbInvoiceTaxable.isChecked = order.tax > 0
+
         val paymentStatuses = arrayOf("Unpaid", "Paid")
         dialogBinding.spPaymentStatus.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, paymentStatuses)
         val pIndex = paymentStatuses.indexOfFirst { it.equals(order.paymentStatus, ignoreCase = true) }
@@ -656,6 +664,9 @@ class InvoicesFragment : Fragment() {
             }
 
             val finalAmount = calculateInvoiceGrandTotal()
+            val isTaxable = dialogBinding.cbInvoiceTaxable.isChecked
+            val subtotal = updatedItems.sumOf { it.total }
+            val taxAmount = if (isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
 
             val updatedOrder = order.copy(
                 customerName = updatedCustomer,
@@ -664,6 +675,8 @@ class InvoicesFragment : Fragment() {
                 customerEmail = updatedEmail,
                 deliveryAddress = updatedAddress,
                 items = updatedItems,
+                subtotal = subtotal,
+                tax = taxAmount,
                 paymentStatus = selectedPayStatus,
                 paymentMethod = selectedPayMethod,
                 totalAmount = finalAmount
