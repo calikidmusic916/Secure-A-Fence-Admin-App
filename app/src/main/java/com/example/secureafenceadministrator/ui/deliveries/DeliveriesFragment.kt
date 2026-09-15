@@ -9,6 +9,8 @@ import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -17,6 +19,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -24,6 +27,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.data.model.CreateInvoiceRequest
+import com.example.secureafenceadministrator.data.model.Order
 import com.example.secureafenceadministrator.data.model.OrderItem
 import com.example.secureafenceadministrator.data.model.SchedulePickupRequest
 import com.example.secureafenceadministrator.data.model.Shipment
@@ -31,6 +35,7 @@ import com.example.secureafenceadministrator.data.model.ShipmentUpdateRequest
 import com.example.secureafenceadministrator.data.model.StatusUpdateRequest
 import com.example.secureafenceadministrator.data.network.ApiClient
 import com.example.secureafenceadministrator.data.network.SessionManager
+import com.example.secureafenceadministrator.databinding.DialogDeliveryDetailsBinding
 import com.example.secureafenceadministrator.databinding.FragmentDeliveriesBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
@@ -39,6 +44,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 
 class DeliveriesFragment : Fragment() {
 
@@ -124,13 +130,15 @@ class DeliveriesFragment : Fragment() {
                     activeShipmentsList = allShipments.filter {
                         !it.status.equals("Delivered", ignoreCase = true) &&
                         !it.status.equals("Completed", ignoreCase = true) &&
-                        !it.status.equals("Returned", ignoreCase = true)
+                        !it.status.equals("Returned", ignoreCase = true) &&
+                        !it.status.equals("Picked Up / Returned", ignoreCase = true)
                     }.toMutableList()
 
                     completedShipmentsList = allShipments.filter {
                         it.status.equals("Delivered", ignoreCase = true) ||
                         it.status.equals("Completed", ignoreCase = true) ||
-                        it.status.equals("Returned", ignoreCase = true)
+                        it.status.equals("Returned", ignoreCase = true) ||
+                        it.status.equals("Picked Up / Returned", ignoreCase = true)
                     }.toMutableList()
 
                     binding.tvActiveDeliveriesHeader.text = "🚚 Active Dispatches & Deliveries (${activeShipmentsList.size})"
@@ -138,9 +146,9 @@ class DeliveriesFragment : Fragment() {
 
                     activeAdapter = GenericAdapter(
                         activeShipmentsList,
-                        titleProvider = { "${it.type} #${it.id}" },
+                        titleProvider = { "${it.type.ifEmpty { "Delivery" }} #${it.id}" },
                         subtitleProvider = {
-                            val etaText = if (!it.eta.isNullOrEmpty()) "\n⏱️ ETA: ${it.eta}" else ""
+                            val etaText = if (!it.eta.isNullOrEmpty()) "\n⏱️ Time/ETA: ${it.eta}" else ""
                             val photosText = if (!it.deliveryPhotos.isNullOrEmpty()) "\n📸 Proof Photos: ${it.deliveryPhotos.size} uploaded" else ""
                             "Driver: ${it.driverName.ifEmpty { "Unassigned" }}\nDest: ${it.destination}\nDate: ${it.dispatchDate}$etaText$photosText"
                         },
@@ -152,10 +160,10 @@ class DeliveriesFragment : Fragment() {
 
                     completedAdapter = GenericAdapter(
                         completedShipmentsList,
-                        titleProvider = { "${it.type} #${it.id}" },
+                        titleProvider = { "${it.type.ifEmpty { "Delivery" }} #${it.id}" },
                         subtitleProvider = {
                             val photosText = if (!it.deliveryPhotos.isNullOrEmpty()) "\n📸 Proof Photos: ${it.deliveryPhotos.size} uploaded" else ""
-                            "Driver: ${it.driverName.ifEmpty { "Completed" }}\nDest: ${it.destination}\nDelivered On: ${it.dispatchDate}$photosText"
+                            "Driver: ${it.driverName.ifEmpty { "Completed" }}\nDest: ${it.destination}\nCompleted Date: ${it.dispatchDate}$photosText"
                         },
                         statusProvider = { "Status: ${it.status.uppercase()} (Invoiced)" },
                         rightImageResIdProvider = { R.drawable.logo },
@@ -230,49 +238,243 @@ class DeliveriesFragment : Fragment() {
 
     private fun showShipmentDetailsDialog(shipment: Shipment) {
         val context = context ?: return
-        val details = StringBuilder()
-        details.append("🚚 Type: ${shipment.type}\n")
-        details.append("Ref Order ID: ${shipment.orderId}\n")
-        details.append("Driver / Truck: ${shipment.driverName.ifEmpty { "Unassigned Dispatcher" }}\n")
-        details.append("Dispatch Date: ${shipment.dispatchDate}\n")
-        details.append("Destination: ${shipment.destination}\n")
-        details.append("Status: ${shipment.status.uppercase()}\n")
-        if (!shipment.eta.isNullOrEmpty()) details.append("⏱️ ETA: ${shipment.eta}\n")
-        if (!shipment.notes.isNullOrEmpty()) details.append("📝 Notes: ${shipment.notes}\n")
-        if (!shipment.deliveryPhotos.isNullOrEmpty()) {
-            details.append("📸 Delivery Proof Photos: ${shipment.deliveryPhotos.size} photo(s) attached\n")
-        }
+        val token = SessionManager.getToken(context) ?: return
+        val dialogBinding = DialogDeliveryDetailsBinding.inflate(LayoutInflater.from(context))
 
-        val options = arrayOf(
-            "⏱️ Mark Status & Set Customer ETA",
-            "📸 Upload Delivery Proof Photo",
-            "📝 Edit Notes & Access Instructions",
-            "👤 Assign Driver / Fleet Truck",
-            "📍 Navigate to Destination (Google Maps GPS)"
-        )
+        val targetOrderId = shipment.orderId.ifEmpty { shipment.id }
+        val dispatchType = shipment.type.ifEmpty { "Delivery" }
 
-        AlertDialog.Builder(context)
-            .setTitle("Shipment #${shipment.id}")
-            .setMessage(details.toString())
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showUpdateStatusAndEtaDialog(shipment)
-                    1 -> {
-                        currentPhotoTargetShipmentId = shipment.id
-                        deliveryPhotoPickerLauncher.launch("image/*")
+        dialogBinding.tvDeliveryDialogTitle.text = "🚚 Dispatch Details #${shipment.id}"
+        dialogBinding.tvDeliveryOrderIdAndType.text = "Ref Order #$targetOrderId | Dispatch Type: ${dispatchType.uppercase()}"
+        dialogBinding.etDriverName.setText(shipment.driverName)
+        dialogBinding.etDispatchDate.setText(shipment.dispatchDate)
+        dialogBinding.etDestinationAddress.setText(shipment.destination)
+
+        val statuses = arrayOf("Scheduled", "In Route", "Pickup Scheduled", "Delivered", "Picked Up / Returned")
+        dialogBinding.spDeliveryStatus.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, statuses)
+        val statusIndex = statuses.indexOfFirst { it.equals(shipment.status, ignoreCase = true) }
+        if (statusIndex >= 0) dialogBinding.spDeliveryStatus.setSelection(statusIndex)
+
+        dialogBinding.spDeliveryStatus.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val selected = statuses[position]
+                when {
+                    selected.equals("In Route", ignoreCase = true) -> {
+                        dialogBinding.tvTimeInputLabel.text = "⏱️ Estimated Arrival Time (ETA):"
+                        dialogBinding.etEtaOrPickupTime.hint = "e.g. 10:30 AM or 25 mins"
                     }
-                    2 -> showEditNotesDialog(shipment)
-                    3 -> showAssignDriverDialog(shipment)
-                    4 -> openGoogleMapsNavigation(shipment.destination)
+                    selected.contains("Pickup", ignoreCase = true) -> {
+                        dialogBinding.tvTimeInputLabel.text = "⏰ Scheduled Pickup Time:"
+                        dialogBinding.etEtaOrPickupTime.hint = "e.g. 2:00 PM Today or 11:15 AM"
+                    }
+                    else -> {
+                        dialogBinding.tvTimeInputLabel.text = "⏱️ Scheduled ETA / Pickup Time:"
+                        dialogBinding.etEtaOrPickupTime.hint = "Time / ETA"
+                    }
                 }
             }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        dialogBinding.etEtaOrPickupTime.setText(shipment.eta)
+        dialogBinding.etDeliveryNotes.setText(shipment.notes)
+        dialogBinding.btnUploadProofPhoto.text = "📸 Snap / Upload Proof Photo (${shipment.deliveryPhotos?.size ?: 0} Attached)"
+
+        val deliveredQtyInputs = mutableMapOf<OrderItem, EditText>()
+        var currentItemsList = mutableListOf<OrderItem>()
+
+        fun recalculatePricePreview() {
+            var subtotal = 0.0
+            for ((item, inputField) in deliveredQtyInputs) {
+                val actualQty = inputField.text.toString().toIntOrNull() ?: item.quantity
+                subtotal += (actualQty * item.unitPrice)
+            }
+            val deliveryFee = if (subtotal > 0) 50.0 else 0.0
+            val tax = Math.round(subtotal * 0.08 * 100.0) / 100.0
+            val grandTotal = subtotal + deliveryFee + tax
+
+            dialogBinding.tvAdjustedTotalPreview.text = "💰 Adjusted Total: $" + String.format(Locale.US, "%.2f", grandTotal) + " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) + " + $50 Transport + 8% Tax)"
+        }
+
+        lifecycleScope.launch {
+            try {
+                val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
+                if (salesResponse.isSuccessful && salesResponse.body() != null) {
+                    val matchingOrder = salesResponse.body()!!.find {
+                        it.id.equals(targetOrderId, ignoreCase = true) || it.id.equals(shipment.id, ignoreCase = true)
+                    }
+                    if (matchingOrder != null && !matchingOrder.items.isNullOrEmpty()) {
+                        currentItemsList = matchingOrder.items.toMutableList()
+                    }
+                }
+
+                if (currentItemsList.isEmpty()) {
+                    currentItemsList = mutableListOf(
+                        OrderItem(productId = "prod-1", name = "Refurbished Temporary Fence Panel (6' x 12')", unitPrice = 65.0, quantity = 50, deliveredQuantity = 50, total = 3250.0),
+                        OrderItem(productId = "prod-2", name = "Flat Base / Stand", unitPrice = 10.0, quantity = 50, deliveredQuantity = 50, total = 500.0),
+                        OrderItem(productId = "prod-3", name = "Safety Clamp / Panel Clip", unitPrice = 5.0, quantity = 50, deliveredQuantity = 50, total = 250.0)
+                    )
+                }
+
+                dialogBinding.llDeliveredItemsContainer.removeAllViews()
+                deliveredQtyInputs.clear()
+
+                for (item in currentItemsList) {
+                    val itemLayout = LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(0, 8, 0, 8)
+                    }
+
+                    val tvLabel = TextView(context).apply {
+                        text = "• ${item.name}\n  [Ordered: ${item.quantity} units @ $${item.unitPrice}]"
+                        textSize = 13f
+                        setTypeface(null, Typeface.BOLD)
+                    }
+
+                    val inputDeliveredQty = EditText(context).apply {
+                        hint = "Actual Quantity Delivered / Picked Up"
+                        setText((item.deliveredQuantity ?: item.quantity).toString())
+                        inputType = InputType.TYPE_CLASS_NUMBER
+                        doAfterTextChanged { recalculatePricePreview() }
+                    }
+
+                    itemLayout.addView(tvLabel)
+                    itemLayout.addView(inputDeliveredQty)
+                    dialogBinding.llDeliveredItemsContainer.addView(itemLayout)
+                    deliveredQtyInputs[item] = inputDeliveredQty
+                }
+
+                recalculatePricePreview()
+
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error loading order items: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val dialog = AlertDialog.Builder(context)
+            .setView(dialogBinding.root)
             .setPositiveButton("Close", null)
-            .show()
+            .create()
+
+        dialogBinding.btnUploadProofPhoto.setOnClickListener {
+            currentPhotoTargetShipmentId = shipment.id
+            deliveryPhotoPickerLauncher.launch("image/*")
+        }
+
+        dialogBinding.btnSaveDeliveryChanges.setOnClickListener {
+            val updatedDriver = dialogBinding.etDriverName.text.toString().trim()
+            val updatedDate = dialogBinding.etDispatchDate.text.toString().trim()
+            val updatedDest = dialogBinding.etDestinationAddress.text.toString().trim()
+            val updatedStatus = dialogBinding.spDeliveryStatus.selectedItem.toString()
+            val updatedEta = dialogBinding.etEtaOrPickupTime.text.toString().trim()
+            val updatedNotes = dialogBinding.etDeliveryNotes.text.toString().trim()
+
+            val updatedDeliveredItems = deliveredQtyInputs.map { (item, inputField) ->
+                val qty = inputField.text.toString().toIntOrNull() ?: item.quantity
+                item.copy(deliveredQuantity = qty)
+            }
+
+            lifecycleScope.launch {
+                try {
+                    ApiClient.instance.updateShipment(
+                        "Bearer $token",
+                        shipment.id,
+                        ShipmentUpdateRequest(
+                            driverName = updatedDriver,
+                            dispatchDate = updatedDate,
+                            status = updatedStatus,
+                            destination = updatedDest,
+                            notes = updatedNotes,
+                            eta = updatedEta,
+                            deliveredItems = updatedDeliveredItems
+                        )
+                    )
+
+                    Toast.makeText(context, "💾 Dispatch details saved!", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    loadDeliveries()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error saving updates: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        dialogBinding.btnCompleteDeliveryAndInvoice.setOnClickListener {
+            val selectedStatus = dialogBinding.spDeliveryStatus.selectedItem.toString()
+            val finalStatus = if (selectedStatus.contains("Pickup", ignoreCase = true) || selectedStatus.contains("Returned", ignoreCase = true)) "Picked Up / Returned" else "Delivered"
+
+            val updatedDriver = dialogBinding.etDriverName.text.toString().trim()
+            val updatedDate = dialogBinding.etDispatchDate.text.toString().trim()
+            val updatedDest = dialogBinding.etDestinationAddress.text.toString().trim()
+            val updatedNotes = dialogBinding.etDeliveryNotes.text.toString().trim()
+
+            val updatedDeliveredItems = deliveredQtyInputs.map { (item, inputField) ->
+                val qty = inputField.text.toString().toIntOrNull() ?: item.quantity
+                item.copy(deliveredQuantity = qty)
+            }
+
+            var adjustedSubtotal = 0.0
+            for (item in updatedDeliveredItems) {
+                val qty = item.deliveredQuantity ?: item.quantity
+                adjustedSubtotal += (qty * item.unitPrice)
+            }
+            val deliveryFee = if (adjustedSubtotal > 0) 50.0 else 0.0
+            val tax = Math.round(adjustedSubtotal * 0.08 * 100.0) / 100.0
+            val adjustedGrandTotal = adjustedSubtotal + deliveryFee + tax
+
+            lifecycleScope.launch {
+                try {
+                    // 1. Update Shipment status
+                    ApiClient.instance.updateShipment(
+                        "Bearer $token",
+                        shipment.id,
+                        ShipmentUpdateRequest(
+                            driverName = updatedDriver,
+                            dispatchDate = updatedDate,
+                            status = finalStatus,
+                            destination = updatedDest,
+                            notes = updatedNotes,
+                            deliveredItems = updatedDeliveredItems
+                        )
+                    )
+
+                    // 2. Update Order status throughout system
+                    ApiClient.instance.updateOrderStatus("Bearer $token", targetOrderId, StatusUpdateRequest(finalStatus))
+
+                    // 3. Auto-generate Adjusted Invoice
+                    ApiClient.instance.createInvoice(
+                        "Bearer $token",
+                        CreateInvoiceRequest(
+                            orderId = targetOrderId,
+                            customerName = updatedDriver.ifEmpty { "Customer" },
+                            amount = adjustedGrandTotal,
+                            status = "unpaid"
+                        )
+                    )
+
+                    Toast.makeText(context, "✅ Completed! Adjusted invoice issued ($" + String.format(Locale.US, "%.2f", adjustedGrandTotal) + ")", Toast.LENGTH_LONG).show()
+
+                    dialog.dismiss()
+                    loadDeliveries()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Completed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                    loadDeliveries()
+                }
+            }
+        }
+
+        dialogBinding.btnOpenGpsMap.setOnClickListener {
+            openGoogleMapsNavigation(dialogBinding.etDestinationAddress.text.toString().trim().ifEmpty { shipment.destination })
+        }
+
+        dialog.show()
     }
 
     private fun showUpdateStatusAndEtaDialog(shipment: Shipment) {
         val context = context ?: return
-        val statuses = arrayOf("Scheduled", "In Route", "Delivered", "Returned")
+        val statuses = arrayOf("Scheduled", "In Route", "Pickup Scheduled", "Delivered", "Picked Up / Returned")
 
         AlertDialog.Builder(context)
             .setTitle("Update Delivery Status")
@@ -280,7 +482,7 @@ class DeliveriesFragment : Fragment() {
                 val selectedStatus = statuses[which]
                 if (selectedStatus.equals("In Route", ignoreCase = true)) {
                     showEtaInputDialog(shipment)
-                } else if (selectedStatus.equals("Delivered", ignoreCase = true)) {
+                } else if (selectedStatus.contains("Delivered", ignoreCase = true) || selectedStatus.contains("Returned", ignoreCase = true)) {
                     markShipmentDeliveredAndGenerateInvoice(shipment)
                 } else {
                     updateShipment(shipment.id, ShipmentUpdateRequest(status = selectedStatus))
@@ -290,166 +492,7 @@ class DeliveriesFragment : Fragment() {
     }
 
     private fun markShipmentDeliveredAndGenerateInvoice(shipment: Shipment) {
-        val context = context ?: return
-        val token = SessionManager.getToken(context) ?: return
-
-        lifecycleScope.launch {
-            try {
-                val targetOrderId = shipment.orderId.ifEmpty { shipment.id }
-                var orderItems = listOf<OrderItem>()
-                var customerName = shipment.driverName.ifEmpty { "Customer" }
-                var orderTotalAmount = 250.0
-
-                val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
-                if (salesResponse.isSuccessful && salesResponse.body() != null) {
-                    val matchingOrder = salesResponse.body()!!.find {
-                        it.id.equals(targetOrderId, ignoreCase = true) || it.id.equals(shipment.id, ignoreCase = true)
-                    }
-                    if (matchingOrder != null) {
-                        if (!matchingOrder.items.isNullOrEmpty()) orderItems = matchingOrder.items
-                        if (matchingOrder.customerName.isNotEmpty()) customerName = matchingOrder.customerName
-                        if (matchingOrder.totalAmount > 0) orderTotalAmount = matchingOrder.totalAmount
-                    }
-                }
-
-                if (orderItems.isEmpty()) {
-                    orderItems = listOf(
-                        OrderItem(productId = "prod-1", name = "Refurbished Temporary Fence Panel (6' x 12')", unitPrice = 65.0, quantity = 50, deliveredQuantity = 50, total = 3250.0),
-                        OrderItem(productId = "prod-2", name = "Flat Base / Stand", unitPrice = 10.0, quantity = 50, deliveredQuantity = 50, total = 500.0),
-                        OrderItem(productId = "prod-3", name = "Safety Clamp / Panel Clip", unitPrice = 5.0, quantity = 50, deliveredQuantity = 50, total = 250.0)
-                    )
-                }
-
-                showDeliveryConfirmationDialog(shipment, targetOrderId, customerName, orderTotalAmount, orderItems)
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error loading delivery details: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun showDeliveryConfirmationDialog(
-        shipment: Shipment,
-        targetOrderId: String,
-        customerName: String,
-        orderTotalAmount: Double,
-        orderItems: List<OrderItem>
-    ) {
-        val context = context ?: return
-        val token = SessionManager.getToken(context) ?: return
-
-        val builder = AlertDialog.Builder(context)
-        builder.setTitle("📸 Confirm Delivery & Quantities")
-
-        val scrollView = ScrollView(context)
-        val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 16, 32, 16)
-        }
-
-        val tvHeader = TextView(context).apply {
-            text = "🚚 Shipment #${shipment.id} (Order #$targetOrderId)\nClient: $customerName"
-            textSize = 14f
-            setTypeface(null, Typeface.BOLD)
-            setPadding(0, 0, 0, 16)
-        }
-        layout.addView(tvHeader)
-
-        // Proof Photo Button
-        val photosCount = shipment.deliveryPhotos?.size ?: 0
-        val btnPhoto = Button(context).apply {
-            text = "📸 Snap / Upload Proof Photo ($photosCount attached)"
-            setOnClickListener {
-                currentPhotoTargetShipmentId = shipment.id
-                deliveryPhotoPickerLauncher.launch("image/*")
-            }
-        }
-        layout.addView(btnPhoto)
-
-        // Notes Input
-        val tvNotesHeader = TextView(context).apply {
-            text = "\n📝 Driver Delivery Notes & Drop-Off Instructions:"
-            setTypeface(null, Typeface.BOLD)
-        }
-        val inputNotes = EditText(context).apply {
-            hint = "e.g. Delivered by North gate per site manager request"
-            setText(shipment.notes)
-        }
-        layout.addView(tvNotesHeader)
-        layout.addView(inputNotes)
-
-        // Item Quantities Section
-        val tvQtyHeader = TextView(context).apply {
-            text = "\n📋 ENTER DELIVERED QUANTITIES (REQUIRED):"
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.BLUE)
-        }
-        layout.addView(tvQtyHeader)
-
-        val qtyInputMap = mutableMapOf<OrderItem, EditText>()
-        for (item in orderItems) {
-            val tvItemLabel = TextView(context).apply {
-                text = "• ${item.name}\n  [Ordered Quantity: ${item.quantity}]"
-                textSize = 13f
-                setPadding(0, 12, 0, 4)
-            }
-            val inputDeliveredQty = EditText(context).apply {
-                hint = "Enter delivered quantity"
-                setText((item.deliveredQuantity ?: item.quantity).toString())
-                inputType = InputType.TYPE_CLASS_NUMBER
-            }
-            layout.addView(tvItemLabel)
-            layout.addView(inputDeliveredQty)
-            qtyInputMap[item] = inputDeliveredQty
-        }
-
-        scrollView.addView(layout)
-        builder.setView(scrollView)
-
-        builder.setPositiveButton("✅ Confirm Delivery & Issue Invoice") { _, _ ->
-            val updatedNotes = inputNotes.text.toString().trim()
-            val deliveredItems = mutableListOf<OrderItem>()
-
-            for ((item, inputField) in qtyInputMap) {
-                val deliveredQty = inputField.text.toString().toIntOrNull() ?: item.quantity
-                deliveredItems.add(item.copy(deliveredQuantity = deliveredQty))
-            }
-
-            lifecycleScope.launch {
-                try {
-                    // 1. Update Shipment status & items
-                    ApiClient.instance.updateShipment(
-                        "Bearer $token",
-                        shipment.id,
-                        ShipmentUpdateRequest(
-                            status = "Delivered",
-                            notes = updatedNotes,
-                            deliveredItems = deliveredItems
-                        )
-                    )
-
-                    // 2. Update Order throughout system
-                    ApiClient.instance.updateOrderStatus("Bearer $token", targetOrderId, StatusUpdateRequest("Delivered"))
-
-                    // 3. Auto-generate Invoice
-                    val invoiceRequest = CreateInvoiceRequest(
-                        orderId = targetOrderId,
-                        customerName = customerName,
-                        amount = orderTotalAmount,
-                        status = "unpaid"
-                    )
-                    ApiClient.instance.createInvoice("Bearer $token", invoiceRequest)
-
-                    Toast.makeText(context, "✅ Order #$targetOrderId marked Delivered. Invoice auto-generated!", Toast.LENGTH_LONG).show()
-
-                    loadDeliveries()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Error saving delivery confirmation: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-
-        builder.setNegativeButton("Cancel", null)
-        builder.show()
+        showShipmentDetailsDialog(shipment)
     }
 
     private fun showEtaInputDialog(shipment: Shipment) {

@@ -122,6 +122,7 @@ data class ShipmentUpdateRequest(
     val driverName: String? = null,
     val status: String? = null,
     val dispatchDate: String? = null,
+    val destination: String? = null,
     val notes: String? = null,
     val eta: String? = null,
     val deliveryPhotos: List<String>? = null,
