@@ -563,7 +563,7 @@ class InvoicesFragment : Fragment() {
         dialogBinding.tvInvoiceDialogTitle.text = "📄 ${order.orderType.uppercase()} Details #${order.id}"
 
         val isInvoiced = order.status.equals("Delivered", ignoreCase = true) || order.status.equals("Picked Up / Returned", ignoreCase = true) || order.status.equals("Completed", ignoreCase = true)
-        val statusText = if (isInvoiced) "Status: ${order.status.uppercase()} (OFFICIALLY INVOICED)" else "Status: ${order.status.uppercase()} (Invoice Issued Upon Delivery/Pickup)"
+        val statusText = if (isInvoiced) "Status: ${order.status.uppercase()} (OFFICIALLY INVOICED - LOCKED)" else "Status: ${order.status.uppercase()} (Invoice Issued Upon Delivery/Pickup)"
         dialogBinding.tvInvoiceStatusBadge.text = statusText
 
         dialogBinding.etInvoiceCustomerName.setText(order.customerName)
@@ -640,6 +640,22 @@ class InvoicesFragment : Fragment() {
 
         calculateInvoiceGrandTotal()
 
+        // Locking rule: If order is completed/invoiced, lock line items and fields to READ-ONLY
+        if (isInvoiced) {
+            dialogBinding.etInvoiceCustomerName.isEnabled = false
+            dialogBinding.etInvoiceCompany.isEnabled = false
+            dialogBinding.etInvoicePhone.isEnabled = false
+            dialogBinding.etInvoiceEmail.isEnabled = false
+            dialogBinding.etInvoiceDeliveryAddress.isEnabled = false
+            dialogBinding.cbInvoiceTaxable.isEnabled = false
+            dialogBinding.etInvoiceDiscount.isEnabled = false
+            for (inputField in itemQtyInputs.values) {
+                inputField.isEnabled = false
+            }
+
+            dialogBinding.btnSaveInvoiceChanges.text = "🔄 Change Status Back to Processing (Re-Open Order)"
+        }
+
         val dialog = AlertDialog.Builder(context)
             .setView(dialogBinding.root)
             .setPositiveButton("Close", null)
@@ -650,50 +666,68 @@ class InvoicesFragment : Fragment() {
         }
 
         dialogBinding.btnSaveInvoiceChanges.setOnClickListener {
-            val updatedCustomer = dialogBinding.etInvoiceCustomerName.text.toString().trim()
-            val updatedCompany = dialogBinding.etInvoiceCompany.text.toString().trim()
-            val updatedPhone = dialogBinding.etInvoicePhone.text.toString().trim()
-            val updatedEmail = dialogBinding.etInvoiceEmail.text.toString().trim()
-            val updatedAddress = dialogBinding.etInvoiceDeliveryAddress.text.toString().trim()
-            val selectedPayStatus = dialogBinding.spPaymentStatus.selectedItem.toString()
-            val selectedPayMethod = dialogBinding.spPaymentMethod.selectedItem.toString()
+            if (isInvoiced) {
+                // Change status back to Processing
+                lifecycleScope.launch {
+                    try {
+                        ApiClient.instance.updateOrderStatus("Bearer $token", order.id, StatusUpdateRequest("Processing"))
+                        ApiClient.instance.updateOrder("Bearer $token", order.id, order.copy(status = "Processing"))
 
-            val updatedItems = itemQtyInputs.map { (item, inputField) ->
-                val qty = inputField.text.toString().toIntOrNull() ?: item.quantity
-                item.copy(deliveredQuantity = qty, quantity = qty, total = qty * item.unitPrice)
-            }
+                        Toast.makeText(context, "🔄 Order #${order.id} status changed back to Processing (Re-Opened)!", Toast.LENGTH_LONG).show()
+                        dialog.dismiss()
+                        loadInvoices()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Re-opened: ${e.message}", Toast.LENGTH_SHORT).show()
+                        dialog.dismiss()
+                        loadInvoices()
+                    }
+                }
+            } else {
+                val updatedCustomer = dialogBinding.etInvoiceCustomerName.text.toString().trim()
+                val updatedCompany = dialogBinding.etInvoiceCompany.text.toString().trim()
+                val updatedPhone = dialogBinding.etInvoicePhone.text.toString().trim()
+                val updatedEmail = dialogBinding.etInvoiceEmail.text.toString().trim()
+                val updatedAddress = dialogBinding.etInvoiceDeliveryAddress.text.toString().trim()
+                val selectedPayStatus = dialogBinding.spPaymentStatus.selectedItem.toString()
+                val selectedPayMethod = dialogBinding.spPaymentMethod.selectedItem.toString()
 
-            val finalAmount = calculateInvoiceGrandTotal()
-            val isTaxable = dialogBinding.cbInvoiceTaxable.isChecked
-            val subtotal = updatedItems.sumOf { it.total }
-            val taxAmount = if (isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
+                val updatedItems = itemQtyInputs.map { (item, inputField) ->
+                    val qty = inputField.text.toString().toIntOrNull() ?: item.quantity
+                    item.copy(deliveredQuantity = qty, quantity = qty, total = qty * item.unitPrice)
+                }
 
-            val updatedOrder = order.copy(
-                customerName = updatedCustomer,
-                customerCompany = updatedCompany,
-                customerPhone = updatedPhone,
-                customerEmail = updatedEmail,
-                deliveryAddress = updatedAddress,
-                items = updatedItems,
-                subtotal = subtotal,
-                tax = taxAmount,
-                paymentStatus = selectedPayStatus,
-                paymentMethod = selectedPayMethod,
-                totalAmount = finalAmount
-            )
+                val finalAmount = calculateInvoiceGrandTotal()
+                val isTaxable = dialogBinding.cbInvoiceTaxable.isChecked
+                val subtotal = updatedItems.sumOf { it.total }
+                val taxAmount = if (isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
 
-            lifecycleScope.launch {
-                try {
-                    ApiClient.instance.updateOrder("Bearer $token", order.id, updatedOrder)
-                    ApiClient.instance.updateOrderPayment("Bearer $token", order.id, OrderPaymentUpdateRequest(selectedPayStatus, selectedPayMethod))
+                val updatedOrder = order.copy(
+                    customerName = updatedCustomer,
+                    customerCompany = updatedCompany,
+                    customerPhone = updatedPhone,
+                    customerEmail = updatedEmail,
+                    deliveryAddress = updatedAddress,
+                    items = updatedItems,
+                    subtotal = subtotal,
+                    tax = taxAmount,
+                    paymentStatus = selectedPayStatus,
+                    paymentMethod = selectedPayMethod,
+                    totalAmount = finalAmount
+                )
 
-                    Toast.makeText(context, "💾 Invoice/Order #${order.id} updated!", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
-                    loadInvoices()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Saved changes: ${e.message}", Toast.LENGTH_SHORT).show()
-                    dialog.dismiss()
-                    loadInvoices()
+                lifecycleScope.launch {
+                    try {
+                        ApiClient.instance.updateOrder("Bearer $token", order.id, updatedOrder)
+                        ApiClient.instance.updateOrderPayment("Bearer $token", order.id, OrderPaymentUpdateRequest(selectedPayStatus, selectedPayMethod))
+
+                        Toast.makeText(context, "💾 Invoice/Order #${order.id} updated!", Toast.LENGTH_SHORT).show()
+                        dialog.dismiss()
+                        loadInvoices()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Saved changes: ${e.message}", Toast.LENGTH_SHORT).show()
+                        dialog.dismiss()
+                        loadInvoices()
+                    }
                 }
             }
         }
