@@ -389,22 +389,10 @@ class InvoicesFragment : Fragment() {
 
             lifecycleScope.launch {
                 try {
-                    // 1. Create order in backend with status Processing
+                    // Create order in backend (backend automatically generates active dispatch shipment with matching Order ID)
                     ApiClient.instance.createOrder("Bearer $token", newOrder)
 
-                    // 2. Dispatch to Shipping Queue with status Processing
-                    ApiClient.instance.schedulePickup(
-                        "Bearer $token",
-                        SchedulePickupRequest(
-                            orderId = orderId,
-                            driverName = "Dispatcher Fleet",
-                            dispatchDate = today,
-                            destination = address,
-                            notes = "Status: PROCESSING - Order placed via Catalog (${orderItems.size} line items)"
-                        )
-                    )
-
-                    Toast.makeText(context, "🎉 Order #$orderId placed & added to Shipping Queue (Processing)!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "🎉 Order #$orderId placed & added to Active Dispatches!", Toast.LENGTH_LONG).show()
 
                     dialog.dismiss()
                     loadInvoices()
