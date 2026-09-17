@@ -1,11 +1,23 @@
 package com.example.secureafenceadministrator.ui.customers
 
+import android.app.AlertDialog
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.*
-import androidx.appcompat.app.AlertDialog
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.Spinner
+import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,10 +29,13 @@ import com.example.secureafenceadministrator.data.model.Order
 import com.example.secureafenceadministrator.data.model.Rental
 import com.example.secureafenceadministrator.data.network.ApiClient
 import com.example.secureafenceadministrator.data.network.SessionManager
+import com.example.secureafenceadministrator.databinding.DialogCustomerBinding
 import com.example.secureafenceadministrator.databinding.DialogCustomerDetailsBinding
 import com.example.secureafenceadministrator.databinding.FragmentCustomersBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -30,6 +45,8 @@ class CustomersFragment : Fragment() {
     private var _binding: FragmentCustomersBinding? = null
     private val binding get() = _binding!!
 
+    private var customersList = mutableListOf<Customer>()
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentCustomersBinding.inflate(inflater, container, false)
         return binding.root
@@ -37,106 +54,79 @@ class CustomersFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
         binding.recyclerViewCustomers.layoutManager = LinearLayoutManager(requireContext())
+
+        loadCustomers()
 
         binding.fabAddCustomer.setOnClickListener {
             showCustomerDialog(null)
         }
-
-        loadCustomers()
     }
 
     private fun loadCustomers() {
         val context = context ?: return
-        val token = SessionManager.getToken(context) ?: return
+        val token = SessionManager.getToken(context)
+        if (token.isNullOrEmpty()) {
+            SessionManager.clearSession(context)
+            return
+        }
 
         lifecycleScope.launch {
             try {
-                val customersResponse = ApiClient.instance.getCustomers("Bearer $token")
+                val response = ApiClient.instance.getCustomers("Bearer $token")
                 val rentalsResponse = ApiClient.instance.getRentals("Bearer $token")
                 val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
 
-                val customers = if (customersResponse.isSuccessful && customersResponse.body() != null) customersResponse.body()!! else emptyList()
                 val rentals = if (rentalsResponse.isSuccessful && rentalsResponse.body() != null) rentalsResponse.body()!! else emptyList()
                 val orders = if (salesResponse.isSuccessful && salesResponse.body() != null) salesResponse.body()!! else emptyList()
 
-                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                if (response.isSuccessful && response.body() != null) {
+                    customersList = response.body()!!.toMutableList()
 
-                val adapter = GenericAdapter(
-                    customers,
-                    titleProvider = { it.name.ifEmpty { "Unnamed Customer" } },
-                    subtitleProvider = { customer ->
-                        val custRentals = rentals.filter {
-                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
-                        }
-                        val custOrders = orders.filter {
-                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
-                        }
+                    binding.tvTitle.text = "👥 Registered Customer Accounts (${customersList.size})"
 
-                        val unpaidOrdersTotal = custOrders.filter {
-                            !it.paymentStatus.equals("Paid", ignoreCase = true)
-                        }.sumOf { it.totalAmount }
+                    val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
-                        val activeRentalsTotal = custRentals.filter {
-                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
-                        }.sumOf { it.monthlyRateTotal }
-
-                        val totalBalance = unpaidOrdersTotal + activeRentalsTotal
-
-                        val activeRentals = custRentals.filter {
-                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
-                        }
-
-                        val rentalReturnStatus = if (activeRentals.isEmpty()) {
-                            "No Active Rentals"
-                        } else {
-                            val overdueRental = activeRentals.find { it.endDate.isNotEmpty() && it.endDate < todayStr }
-                            if (overdueRental != null) {
-                                "⚠️ OVERDUE (Return Date: ${overdueRental.endDate})"
-                            } else {
-                                val nearestReturn = activeRentals.minByOrNull { it.endDate }?.endDate ?: "N/A"
-                                "✅ CURRENT (Next Return: $nearestReturn)"
+                    val adapter = GenericAdapter(
+                        customersList,
+                        titleProvider = { "${it.name}${if (!it.company.isNullOrEmpty()) " (${it.company})" else ""}" },
+                        subtitleProvider = {
+                            val sitesCount = it.jobsites?.size ?: 0
+                            val taxBadge = if (it.isTaxable) "Taxable (8%)" else "TAX EXEMPT"
+                            val phoneStr = (it.phone ?: "").ifEmpty { "N/A" }
+                            "Email: ${it.email}\nPhone: $phoneStr | Sites: $sitesCount | $taxBadge"
+                        },
+                        statusProvider = { cust ->
+                            val custRentals = rentals.filter {
+                                it.customerEmail.equals(cust.email, true) || (cust.id.isNotEmpty() && it.customerId == cust.id)
                             }
-                        }
+                            val custOrders = orders.filter {
+                                it.customerEmail.equals(cust.email, true) || (cust.id.isNotEmpty() && it.customerId == cust.id)
+                            }
 
-                        val balanceText = if (totalBalance > 0) "$${String.format(Locale.US, "%.2f", totalBalance)} DUE" else "$0.00 (Paid in Full)"
-                        val companyStr = if (!customer.company.isNullOrEmpty()) "Company: ${customer.company}\n" else ""
+                            val isOverdue = custRentals.any { !it.endDate.isNullOrEmpty() && it.endDate < todayStr && !it.status.equals("Returned", true) }
 
-                        "${companyStr}Email: ${customer.email} | Phone: ${customer.phone ?: "N/A"}\n💰 Account Balance: $balanceText\n📅 Rental Return: $rentalReturnStatus"
-                    },
-                    statusProvider = { customer ->
-                        val custRentals = rentals.filter {
-                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
-                        }
-                        val custOrders = orders.filter {
-                            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
-                        }
+                            val unpaidOrdersTotal = custOrders.filter { !it.paymentStatus.equals("Paid", ignoreCase = true) }.sumOf { it.totalAmount }
+                            val activeRentalsTotal = custRentals.filter { !it.status.equals("Returned", true) && !it.status.equals("Completed", true) }.sumOf { it.monthlyRateTotal }
+                            val totalBalance = unpaidOrdersTotal + activeRentalsTotal
 
-                        val unpaidOrdersTotal = custOrders.filter {
-                            !it.paymentStatus.equals("Paid", ignoreCase = true)
-                        }.sumOf { it.totalAmount }
-
-                        val activeRentalsTotal = custRentals.filter {
-                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
-                        }.sumOf { it.monthlyRateTotal }
-
-                        val totalBalance = unpaidOrdersTotal + activeRentalsTotal
-
-                        val activeRentals = custRentals.filter {
-                            !it.status.equals("Returned", ignoreCase = true) && !it.status.equals("Completed", ignoreCase = true)
-                        }
-                        val isOverdue = activeRentals.any { !it.endDate.isNullOrEmpty() && it.endDate < todayStr }
-
-                        when {
-                            isOverdue -> "⚠️ OVERDUE"
-                            totalBalance > 0 -> "💳 $" + String.format(Locale.US, "%.2f", totalBalance) + " DUE"
-                            else -> "✅ CURRENT"
-                        }
-                    },
-                    rightImageResIdProvider = { R.drawable.logo },
-                    onItemClick = { showCustomerDetailsWithFinancials(it, rentals, orders, todayStr) }
-                )
-                binding.recyclerViewCustomers.adapter = adapter
+                            when {
+                                isOverdue -> "⚠️ OVERDUE RENTAL"
+                                totalBalance > 0 -> "💳 $" + String.format(Locale.US, "%.2f", totalBalance) + " DUE"
+                                else -> "✅ CURRENT"
+                            }
+                        },
+                        rightImageResIdProvider = { R.drawable.logo },
+                        onItemClick = { showCustomerDetailsWithFinancials(it, rentals, orders, todayStr) }
+                    )
+                    binding.recyclerViewCustomers.adapter = adapter
+                } else if (response.code() == 401) {
+                    Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
+                    SessionManager.clearSession(context)
+                } else {
+                    Toast.makeText(context, "Failed to load customers", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -169,7 +159,9 @@ class CustomersFragment : Fragment() {
             it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
         }
         val custOrders = allOrders.filter {
-            it.customerEmail.equals(customer.email, true) || (customer.id.isNotEmpty() && it.customerId == customer.id)
+            it.customerEmail.equals(customer.email, true) ||
+            (customer.id.isNotEmpty() && it.customerId == customer.id) ||
+            it.customerName.equals(customer.name, true)
         }
 
         val unpaidOrdersTotal = custOrders.filter {
@@ -200,6 +192,65 @@ class CustomersFragment : Fragment() {
             rentalsSummary = "No active rentals deployed for this customer."
         }
         dialogBinding.tvCustomerRentalsSummary.text = rentalsSummary.trim()
+
+        // Populate Invoices & Order History for this Customer
+        dialogBinding.llCustomerInvoicesContainer.removeAllViews()
+
+        if (custOrders.isNotEmpty()) {
+            for (order in custOrders) {
+                val cardLayout = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setBackgroundColor(Color.parseColor("#F8FAFC"))
+                    setPadding(16, 16, 16, 16)
+                    val params = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { setMargins(0, 0, 0, 16) }
+                    layoutParams = params
+                }
+
+                val isInvoiced = order.status.equals("Delivered", true) || order.status.equals("Picked Up / Returned", true) || order.status.equals("Completed", true)
+                val statusBadge = if (isInvoiced) "📄 OFFICIALLY INVOICED [${order.status.uppercase(Locale.US)}]" else "📦 SALES ORDER [${order.status.uppercase(Locale.US)}]"
+                val payBadge = if (order.paymentStatus.equals("Paid", true)) "💳 PAID (${order.paymentMethod ?: "Method N/A"})" else "⚠️ UNPAID"
+
+                val tvHeader = TextView(context).apply {
+                    text = "📄 ${order.orderType.uppercase(Locale.US)} #${order.id} | $statusBadge"
+                    textSize = 13f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#0F172A"))
+                }
+
+                val itemsSummary = if (order.items.isNullOrEmpty()) "• 1x Custom Temporary Fence Package" else order.items.joinToString("\n") { "• ${it.quantity}x ${it.name} @ $${it.unitPrice}" }
+
+                val tvDetails = TextView(context).apply {
+                    text = "Date: ${order.deliveryDate.ifEmpty { "N/A" }}\nAddress: ${order.deliveryAddress.ifEmpty { "Sacramento Warehouse" }}\n$itemsSummary\n💰 Total: $${String.format(Locale.US, "%.2f", order.totalAmount)} | Payment: $payBadge"
+                    textSize = 12f
+                    setTextColor(Color.parseColor("#334155"))
+                    setPadding(0, 4, 0, 8)
+                }
+
+                val btnPdf = Button(context).apply {
+                    text = "🖨️ Export PDF Invoice"
+                    textSize = 11f
+                    setOnClickListener {
+                        generatePdfInvoice(order)
+                    }
+                }
+
+                cardLayout.addView(tvHeader)
+                cardLayout.addView(tvDetails)
+                cardLayout.addView(btnPdf)
+
+                dialogBinding.llCustomerInvoicesContainer.addView(cardLayout)
+            }
+        } else {
+            val tvEmpty = TextView(context).apply {
+                text = "No invoices or orders on file for this customer."
+                textSize = 13f
+                setPadding(8, 8, 8, 8)
+            }
+            dialogBinding.llCustomerInvoicesContainer.addView(tvEmpty)
+        }
 
         val jobsitesList = customer.jobsites
         val jobsitesSummary = if (!jobsitesList.isNullOrEmpty()) {
@@ -279,6 +330,108 @@ class CustomersFragment : Fragment() {
         dialog.show()
     }
 
+    private fun generatePdfInvoice(order: Order) {
+        val context = context ?: return
+        val pdfDocument = PdfDocument()
+        val paint = Paint()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+
+        // Header
+        paint.textSize = 24f
+        paint.isFakeBoldText = true
+        canvas.drawText("SECURE-A-FENCE RENTALS & SALES", 40f, 60f, paint)
+        paint.textSize = 12f
+        paint.isFakeBoldText = false
+        canvas.drawText("123 Perimeter Way, Sacramento, CA 95814 | Phone: 916-573-9543", 40f, 85f, paint)
+        canvas.drawText("Web: secure-a-fence.com | Email: support@secureafence.com", 40f, 100f, paint)
+        canvas.drawLine(40f, 115f, 555f, 115f, paint)
+
+        // Metadata
+        paint.textSize = 16f
+        paint.isFakeBoldText = true
+        canvas.drawText("INVOICE / ORDER SUMMARY", 40f, 150f, paint)
+        paint.textSize = 12f
+        paint.isFakeBoldText = false
+        canvas.drawText("Order ID: ${order.id}", 40f, 175f, paint)
+        canvas.drawText("Date: ${order.deliveryDate}", 40f, 190f, paint)
+        canvas.drawText("Status: ${order.status}", 40f, 205f, paint)
+        canvas.drawText("Payment: ${order.paymentStatus ?: "Unpaid"} (${order.paymentMethod ?: "None"})", 40f, 220f, paint)
+
+        // Bill To
+        paint.isFakeBoldText = true
+        canvas.drawText("BILL TO:", 300f, 150f, paint)
+        paint.isFakeBoldText = false
+        canvas.drawText(order.customerName, 300f, 175f, paint)
+        canvas.drawText(order.customerCompany, 300f, 190f, paint)
+        canvas.drawText(order.deliveryAddress, 300f, 205f, paint)
+
+        // Table Header
+        paint.isFakeBoldText = true
+        canvas.drawLine(40f, 240f, 555f, 240f, paint)
+        canvas.drawText("Item Description", 40f, 260f, paint)
+        canvas.drawText("Ord Qty", 310f, 260f, paint)
+        canvas.drawText("Del Qty", 370f, 260f, paint)
+        canvas.drawText("Unit Price", 430f, 260f, paint)
+        canvas.drawText("Total", 500f, 260f, paint)
+        canvas.drawLine(40f, 275f, 555f, 275f, paint)
+
+        // Items
+        paint.isFakeBoldText = false
+        var y = 300f
+        if (order.items.isNullOrEmpty()) {
+            canvas.drawText("Custom Temporary Fence Package", 40f, y, paint)
+            canvas.drawText("1", 310f, y, paint)
+            canvas.drawText("1", 370f, y, paint)
+            canvas.drawText("$${order.subtotal}", 430f, y, paint)
+            canvas.drawText("$${order.subtotal}", 500f, y, paint)
+            y += 25f
+        } else {
+            for (item in order.items) {
+                canvas.drawText(item.name.take(28), 40f, y, paint)
+                canvas.drawText(item.quantity.toString(), 310f, y, paint)
+                val delQty = item.deliveredQuantity ?: item.quantity
+                canvas.drawText(delQty.toString(), 370f, y, paint)
+                canvas.drawText("$${item.unitPrice}", 430f, y, paint)
+                canvas.drawText("$${item.total}", 500f, y, paint)
+                y += 25f
+            }
+        }
+
+        // Totals
+        canvas.drawLine(300f, y + 10, 555f, y + 10, paint)
+        y += 40f
+        canvas.drawText("Subtotal:", 430f, y, paint)
+        canvas.drawText("$${order.subtotal}", 500f, y, paint)
+        y += 25f
+        canvas.drawText("Delivery Fee:", 430f, y, paint)
+        canvas.drawText("$${order.deliveryFee}", 500f, y, paint)
+        y += 25f
+        canvas.drawText("Tax (8%):", 430f, y, paint)
+        canvas.drawText("$${order.tax}", 500f, y, paint)
+        y += 25f
+        paint.isFakeBoldText = true
+        canvas.drawText("Total:", 430f, y, paint)
+        canvas.drawText("$${order.totalAmount}", 500f, y, paint)
+
+        // Footer
+        paint.isFakeBoldText = false
+        canvas.drawText("Thank you for choosing Secure-A-Fence Temporary Perimeter Protection!", 40f, 780f, paint)
+
+        pdfDocument.finishPage(page)
+
+        val file = File("/sdcard/Download/Invoice_${order.id}.pdf")
+        try {
+            pdfDocument.writeTo(FileOutputStream(file))
+            Toast.makeText(context, "Invoice exported: Invoice_${order.id}.pdf", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(context, "PDF Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        } finally {
+            pdfDocument.close()
+        }
+    }
+
     private fun showJobsitesListDialog(customer: Customer) {
         val context = context ?: return
         val jobsites = customer.jobsites ?: emptyList()
@@ -324,143 +477,103 @@ class CustomersFragment : Fragment() {
         """.trimIndent()
 
         AlertDialog.Builder(context)
-            .setTitle("Jobsite: ${jobsite.name}")
+            .setTitle("📍 ${jobsite.name}")
             .setMessage(details)
-            .setPositiveButton("Edit Jobsite") { _, _ -> showJobsiteDialog(customer, jobsite) }
-            .setNegativeButton("Delete Jobsite") { _, _ -> confirmDeleteJobsite(customer, jobsite) }
+            .setPositiveButton("Edit Jobsite") { _, _ ->
+                showJobsiteDialog(customer, jobsite)
+            }
+            .setNegativeButton("Delete Jobsite") { _, _ ->
+                deleteJobsite(customer, jobsite)
+            }
             .setNeutralButton("Close", null)
             .show()
     }
 
-    private fun confirmDeleteJobsite(customer: Customer, jobsite: Jobsite) {
-        val context = context ?: return
-        AlertDialog.Builder(context)
-            .setTitle("Delete Jobsite")
-            .setMessage("Are you sure you want to remove jobsite ${jobsite.name}?")
-            .setPositiveButton("Yes") { _, _ ->
-                val jobId = jobsite.id
-                val custId = customer.id
-                if (jobId != null && custId.isNotEmpty()) {
-                    deleteJobsite(custId, jobId)
-                }
-            }
-            .setNegativeButton("No", null)
-            .show()
-    }
-
-    private fun deleteJobsite(customerId: String, jobsiteId: String) {
-        val context = context ?: return
-        val token = SessionManager.getToken(context) ?: return
-
-        lifecycleScope.launch {
-            try {
-                val response = ApiClient.instance.deleteJobsite("Bearer $token", customerId, jobsiteId)
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Jobsite deleted", Toast.LENGTH_SHORT).show()
-                    loadCustomers()
-                } else {
-                    Toast.makeText(context, "Failed to delete jobsite", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun showJobsiteDialog(customer: Customer, jobsite: Jobsite?) {
+    private fun showJobsiteDialog(customer: Customer, existingJobsite: Jobsite?) {
         val context = context ?: return
         val builder = AlertDialog.Builder(context)
-        builder.setTitle(if (jobsite == null) "Add Jobsite for ${customer.name}" else "Edit Jobsite ${jobsite.name}")
+        builder.setTitle(if (existingJobsite == null) "Add Jobsite Location" else "Edit Jobsite Location")
 
-        val view = LayoutInflater.from(context).inflate(R.layout.dialog_jobsite, null)
-        val etName = view.findViewById<EditText>(R.id.et_jobsite_name)
-        val etAddress = view.findViewById<EditText>(R.id.et_jobsite_address)
-        val etContactName = view.findViewById<EditText>(R.id.et_jobsite_contact_name)
-        val etContactPhone = view.findViewById<EditText>(R.id.et_jobsite_contact_phone)
-        val etInstructions = view.findViewById<EditText>(R.id.et_jobsite_instructions)
-        val etDistance = view.findViewById<EditText>(R.id.et_jobsite_distance)
-
-        jobsite?.let {
-            etName.setText(it.name)
-            etAddress.setText(it.address)
-            etContactName.setText(it.contactName)
-            etContactPhone.setText(it.contactPhone)
-            etInstructions.setText(it.specialInstructions)
-            etDistance.setText(it.deliveryDistanceMiles.toString())
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 16)
         }
 
-        builder.setView(view)
-        builder.setPositiveButton("Save Jobsite") { _, _ ->
-            val siteName = etName.text.toString()
-            val siteAddress = etAddress.text.toString()
+        val etName = EditText(context).apply { hint = "Jobsite Name (e.g. Tower B / Main Yard)"; setText(existingJobsite?.name) }
+        val etAddress = EditText(context).apply { hint = "Jobsite Physical Address"; setText(existingJobsite?.address) }
+        val etContactName = EditText(context).apply { hint = "Site Contact Person"; setText(existingJobsite?.contactName) }
+        val etContactPhone = EditText(context).apply { hint = "Site Contact Phone"; setText(existingJobsite?.contactPhone) }
+        val etNotes = EditText(context).apply { hint = "Gate / Delivery Instructions"; setText(existingJobsite?.specialInstructions) }
+        val etDistance = EditText(context).apply {
+            hint = "Delivery Distance from Yard (Miles)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(existingJobsite?.deliveryDistanceMiles?.toString())
+        }
 
-            if (siteName.isEmpty() || siteAddress.isEmpty()) {
-                Toast.makeText(context, "Jobsite Name and Address are required", Toast.LENGTH_SHORT).show()
+        layout.addView(etName)
+        layout.addView(etAddress)
+        layout.addView(etContactName)
+        layout.addView(etContactPhone)
+        layout.addView(etNotes)
+        layout.addView(etDistance)
+
+        builder.setView(layout)
+        builder.setPositiveButton("Save Jobsite") { _, _ ->
+            val name = etName.text.toString().trim()
+            val address = etAddress.text.toString().trim()
+
+            if (name.isEmpty() || address.isEmpty()) {
+                Toast.makeText(context, "Name and Address are required", Toast.LENGTH_SHORT).show()
                 return@setPositiveButton
             }
 
-            val jobsiteReq = Jobsite(
-                id = jobsite?.id,
-                name = siteName,
-                address = siteAddress,
-                contactName = etContactName.text.toString(),
-                contactPhone = etContactPhone.text.toString(),
-                specialInstructions = etInstructions.text.toString(),
+            val jobsite = Jobsite(
+                id = existingJobsite?.id ?: ("site-" + System.currentTimeMillis()),
+                name = name,
+                address = address,
+                contactName = etContactName.text.toString().trim(),
+                contactPhone = etContactPhone.text.toString().trim(),
+                specialInstructions = etNotes.text.toString().trim(),
                 deliveryDistanceMiles = etDistance.text.toString().toDoubleOrNull() ?: 0.0
             )
 
-            saveJobsite(customer.id, jobsite?.id, jobsiteReq)
+            val token = SessionManager.getToken(context) ?: return@setPositiveButton
+
+            lifecycleScope.launch {
+                try {
+                    val response = if (existingJobsite == null) {
+                        ApiClient.instance.createJobsite("Bearer $token", customer.id, jobsite)
+                    } else {
+                        ApiClient.instance.updateJobsite("Bearer $token", customer.id, existingJobsite.id.orEmpty(), jobsite)
+                    }
+
+                    if (response.isSuccessful) {
+                        Toast.makeText(context, "Jobsite saved successfully", Toast.LENGTH_SHORT).show()
+                        loadCustomers()
+                    } else {
+                        Toast.makeText(context, "Failed to save jobsite", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
         builder.setNegativeButton("Cancel", null)
         builder.show()
     }
 
-    private fun saveJobsite(customerId: String, jobsiteId: String?, jobsite: Jobsite) {
+    private fun deleteJobsite(customer: Customer, jobsite: Jobsite) {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
         lifecycleScope.launch {
             try {
-                val response = if (jobsiteId == null) {
-                    ApiClient.instance.createJobsite("Bearer $token", customerId, jobsite)
-                } else {
-                    ApiClient.instance.updateJobsite("Bearer $token", customerId, jobsiteId, jobsite)
-                }
-
+                val response = ApiClient.instance.deleteJobsite("Bearer $token", customer.id, jobsite.id.orEmpty())
                 if (response.isSuccessful) {
-                    Toast.makeText(context, "Jobsite saved successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Jobsite deleted", Toast.LENGTH_SHORT).show()
                     loadCustomers()
                 } else {
-                    Toast.makeText(context, "Failed to save jobsite", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun confirmDelete(customer: Customer) {
-        val context = context ?: return
-        AlertDialog.Builder(context)
-            .setTitle("Delete Customer")
-            .setMessage("Are you sure you want to delete ${customer.name}?")
-            .setPositiveButton("Yes") { _, _ -> deleteCustomer(customer) }
-            .setNegativeButton("No", null)
-            .show()
-    }
-
-    private fun deleteCustomer(customer: Customer) {
-        val context = context ?: return
-        val token = SessionManager.getToken(context) ?: return
-
-        lifecycleScope.launch {
-            try {
-                val response = ApiClient.instance.deleteCustomer("Bearer $token", customer.id)
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Customer deleted", Toast.LENGTH_SHORT).show()
-                    loadCustomers()
-                } else {
-                    Toast.makeText(context, "Failed to delete customer", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed to delete jobsite", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -586,6 +699,32 @@ class CustomersFragment : Fragment() {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun confirmDelete(customer: Customer) {
+        val context = context ?: return
+        val token = SessionManager.getToken(context) ?: return
+
+        AlertDialog.Builder(context)
+            .setTitle("Delete Customer")
+            .setMessage("Are you sure you want to delete ${customer.name}? This will remove their profile.")
+            .setPositiveButton("Delete") { _, _ ->
+                lifecycleScope.launch {
+                    try {
+                        val response = ApiClient.instance.deleteCustomer("Bearer $token", customer.id)
+                        if (response.isSuccessful) {
+                            Toast.makeText(context, "Customer deleted", Toast.LENGTH_SHORT).show()
+                            loadCustomers()
+                        } else {
+                            Toast.makeText(context, "Failed to delete customer", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     override fun onDestroyView() {

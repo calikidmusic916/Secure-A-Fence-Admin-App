@@ -70,8 +70,8 @@ class DeliveriesFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.getShipments("Bearer $token")
-                if (response.isSuccessful) {
-                    val allShipments = response.body() ?: emptyList()
+                if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                    val allShipments = response.body()!!
 
                     activeShipmentsList = allShipments.filter {
                         val status = (it.status ?: "").trim()
@@ -98,11 +98,65 @@ class DeliveriesFragment : Fragment() {
                     Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
                     SessionManager.clearSession(context)
                 } else {
-                    Toast.makeText(context, "Failed to load dispatches (${response.code()})", Toast.LENGTH_SHORT).show()
+                    loadDispatchesFromOrdersFallback(token)
                 }
             } catch (e: Exception) {
-                val errMsg = e.message.orEmpty().ifEmpty { "Unable to load dispatches" }
-                Toast.makeText(context, "Dispatches: $errMsg", Toast.LENGTH_SHORT).show()
+                loadDispatchesFromOrdersFallback(token)
+            }
+        }
+    }
+
+    private fun loadDispatchesFromOrdersFallback(token: String) {
+        lifecycleScope.launch {
+            try {
+                val ordersResp = ApiClient.instance.getSalesOrders("Bearer $token")
+                if (ordersResp.isSuccessful && ordersResp.body() != null) {
+                    val ordersList = ordersResp.body()!!
+                    activeShipmentsList = ordersList.filter {
+                        !it.status.equals("Delivered", true) &&
+                        !it.status.equals("Picked Up / Returned", true) &&
+                        !it.status.equals("Completed", true) &&
+                        !it.status.equals("Cancelled", true)
+                    }.map { order ->
+                        Shipment(
+                            id = order.id,
+                            orderId = order.id,
+                            type = if (order.orderType == "rental") "Rental Delivery" else "Sales Delivery",
+                            driverName = "Unassigned Dispatcher",
+                            dispatchDate = order.deliveryDate,
+                            status = order.status,
+                            destination = order.deliveryAddress.ifEmpty { "Sacramento Warehouse" },
+                            notes = "Jobsite Contact: ${order.customerName}",
+                            deliveredItems = order.items
+                        )
+                    }.toMutableList()
+
+                    completedShipmentsList = ordersList.filter {
+                        it.status.equals("Delivered", true) ||
+                        it.status.equals("Picked Up / Returned", true) ||
+                        it.status.equals("Completed", true)
+                    }.map { order ->
+                        Shipment(
+                            id = order.id,
+                            orderId = order.id,
+                            type = if (order.orderType == "rental") "Rental Delivery" else "Sales Delivery",
+                            driverName = "Unassigned Dispatcher",
+                            dispatchDate = order.deliveryDate,
+                            status = order.status,
+                            destination = order.deliveryAddress.ifEmpty { "Sacramento Warehouse" },
+                            notes = "Jobsite Contact: ${order.customerName}",
+                            deliveredItems = order.items
+                        )
+                    }.toMutableList()
+
+                    binding.tvActiveDeliveriesHeader.text = "🚚 Active Dispatches & Deliveries (${activeShipmentsList.size})"
+                    binding.tvCompletedDeliveriesHeader.text = "✅ Completed Dispatches (${completedShipmentsList.size})"
+
+                    setupActiveAdapter()
+                    setupCompletedAdapter()
+                }
+            } catch (e: Exception) {
+                // Ignore fallback error
             }
         }
     }

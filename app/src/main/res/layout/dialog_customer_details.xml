@@ -207,7 +207,41 @@
             android:background="#DDDDDD"
             android:layout_marginVertical="8dp"/>
 
-        <!-- Section 4: Jobsites -->
+        <!-- Section 4: Customer Invoices & Order History -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📄 Customer Invoices &amp; Order History"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:id="@+id/llCustomerInvoicesContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/tvCustomerInvoicesSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No invoices or orders on file for this customer."
+                android:textSize="13sp"
+                android:textColor="@android:color/black"
+                android:background="#F5F5F5"
+                android:padding="8dp"/>
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#DDDDDD"
+            android:layout_marginVertical="8dp"/>
+
+        <!-- Section 5: Jobsites -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
