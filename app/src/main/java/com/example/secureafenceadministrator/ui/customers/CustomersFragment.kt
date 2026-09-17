@@ -214,6 +214,32 @@ class CustomersFragment : Fragment() {
             .setPositiveButton("Close", null)
             .create()
 
+        var isEditingEnabled = false
+
+        fun toggleCustomerEditing(enable: Boolean) {
+            isEditingEnabled = enable
+            dialogBinding.etCustomerName.isEnabled = enable
+            dialogBinding.etCustomerCompany.isEnabled = enable
+            dialogBinding.etCustomerPhone.isEnabled = enable
+            dialogBinding.etCustomerEmail.isEnabled = enable
+            dialogBinding.etCustomerPassword.isEnabled = enable
+            dialogBinding.etBusinessAddress.isEnabled = enable
+            dialogBinding.spCustomerRole.isEnabled = enable
+            dialogBinding.cbCustomerTaxable.isEnabled = enable
+            dialogBinding.btnSaveCustomerChanges.isEnabled = enable
+
+            if (enable) {
+                dialogBinding.btnEnableCustomerEditing.text = "🔒 Lock"
+                Toast.makeText(context, "✏️ Edit mode enabled. You can now modify customer account profile.", Toast.LENGTH_SHORT).show()
+            } else {
+                dialogBinding.btnEnableCustomerEditing.text = "✏️ Edit"
+            }
+        }
+
+        dialogBinding.btnEnableCustomerEditing.setOnClickListener {
+            toggleCustomerEditing(!isEditingEnabled)
+        }
+
         dialogBinding.btnSaveCustomerChanges.setOnClickListener {
             val name = dialogBinding.etCustomerName.text.toString().trim()
             val email = dialogBinding.etCustomerEmail.text.toString().trim()

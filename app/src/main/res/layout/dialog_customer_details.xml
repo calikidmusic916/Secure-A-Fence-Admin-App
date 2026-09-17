@@ -9,16 +9,31 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- Title -->
-        <TextView
-            android:id="@+id/tvCustomerDialogTitle"
+        <!-- Title & Edit Toggle Button -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="👤 Customer Account Profile"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/black"
-            android:layout_marginBottom="12dp"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/tvCustomerDialogTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="👤 Customer Account Profile"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/black"/>
+
+            <Button
+                android:id="@+id/btnEnableCustomerEditing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✏️ Edit"
+                android:textSize="12sp"/>
+        </LinearLayout>
 
         <!-- Section 1: Customer Profile -->
         <TextView
@@ -37,6 +52,7 @@
             android:hint="Full Name"
             android:inputType="textPersonName"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <EditText
@@ -46,6 +62,7 @@
             android:hint="Company Name (Optional)"
             android:inputType="text"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <LinearLayout
@@ -62,6 +79,7 @@
                 android:hint="Phone Number"
                 android:inputType="phone"
                 android:textSize="14sp"
+                android:enabled="false"
                 android:layout_marginEnd="4dp"/>
 
             <EditText
@@ -71,7 +89,8 @@
                 android:layout_weight="1"
                 android:hint="Email (Username)"
                 android:inputType="textEmailAddress"
-                android:textSize="14sp"/>
+                android:textSize="14sp"
+                android:enabled="false"/>
         </LinearLayout>
 
         <EditText
@@ -81,6 +100,7 @@
             android:hint="Set Account Password (for login)"
             android:inputType="textPassword"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <EditText
@@ -90,6 +110,7 @@
             android:hint="Business / Billing Address"
             android:inputType="textPostalAddress"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="6dp"/>
 
         <LinearLayout
@@ -112,6 +133,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:enabled="false"
                 android:layout_marginEnd="8dp"/>
 
             <CheckBox
@@ -120,7 +142,8 @@
                 android:layout_height="wrap_content"
                 android:text="Taxable (8%)"
                 android:checked="true"
-                android:textSize="13sp"/>
+                android:textSize="13sp"
+                android:enabled="false"/>
         </LinearLayout>
 
         <View
@@ -221,6 +244,7 @@
             android:text="💾 Save Customer Profile Changes"
             android:textStyle="bold"
             android:textSize="13sp"
+            android:enabled="false"
             android:layout_marginBottom="8dp"/>
 
         <Button

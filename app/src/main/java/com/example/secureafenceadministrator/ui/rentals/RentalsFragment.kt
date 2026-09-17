@@ -108,6 +108,31 @@ class RentalsFragment : Fragment() {
 
         dialogBinding.etNotes.setText(rental.notes)
 
+        var isEditingEnabled = false
+
+        fun toggleRentalEditing(enable: Boolean) {
+            isEditingEnabled = enable
+            dialogBinding.etJobsiteAddress.isEnabled = enable
+            dialogBinding.etJobsiteContact.isEnabled = enable
+            dialogBinding.etStartDate.isEnabled = enable
+            dialogBinding.etEndDate.isEnabled = enable
+            dialogBinding.etMonthlyRate.isEnabled = enable
+            dialogBinding.etStatus.isEnabled = enable
+            dialogBinding.etNotes.isEnabled = enable
+            dialogBinding.btnSaveRentalChanges.isEnabled = enable
+
+            if (enable) {
+                dialogBinding.btnEnableRentalEditing.text = "🔒 Lock"
+                Toast.makeText(context, "✏️ Edit mode enabled. You can now modify agreement details.", Toast.LENGTH_SHORT).show()
+            } else {
+                dialogBinding.btnEnableRentalEditing.text = "✏️ Edit"
+            }
+        }
+
+        dialogBinding.btnEnableRentalEditing.setOnClickListener {
+            toggleRentalEditing(!isEditingEnabled)
+        }
+
         val dialog = AlertDialog.Builder(context)
             .setView(dialogBinding.root)
             .setPositiveButton("Close", null)

@@ -9,22 +9,37 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- Title -->
-        <TextView
-            android:id="@+id/tvDialogTitle"
+        <!-- Title & Edit Toggle Button -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="📋 Rental Agreement Details"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/black"
-            android:layout_marginBottom="12dp"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
 
-        <!-- Section 1: Customer Info -->
+            <TextView
+                android:id="@+id/tvDialogTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="📋 Rental Agreement Details"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/black"/>
+
+            <Button
+                android:id="@+id/btnEnableRentalEditing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✏️ Edit"
+                android:textSize="12sp"/>
+        </LinearLayout>
+
+        <!-- Section 1: Customer Info (Read-Only) -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="👤 Customer Information"
+            android:text="👤 Customer Information (Read-Only)"
             android:textSize="15sp"
             android:textStyle="bold"
             android:textColor="@android:color/holo_blue_dark"
@@ -38,6 +53,7 @@
             android:hint="Customer Name"
             android:inputType="textPersonName"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <EditText
@@ -47,6 +63,7 @@
             android:hint="Company Name"
             android:inputType="text"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <LinearLayout
@@ -63,6 +80,7 @@
                 android:hint="Phone"
                 android:inputType="phone"
                 android:textSize="14sp"
+                android:enabled="false"
                 android:layout_marginEnd="4dp"/>
 
             <EditText
@@ -72,7 +90,8 @@
                 android:layout_weight="1"
                 android:hint="Email"
                 android:inputType="textEmailAddress"
-                android:textSize="14sp"/>
+                android:textSize="14sp"
+                android:enabled="false"/>
         </LinearLayout>
 
         <View
@@ -98,6 +117,7 @@
             android:hint="Jobsite Address"
             android:inputType="textPostalAddress"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <EditText
@@ -107,6 +127,7 @@
             android:hint="On-Site Contact Name / Phone"
             android:inputType="text"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="8dp"/>
 
         <View
@@ -138,6 +159,7 @@
                 android:layout_weight="1"
                 android:hint="Start Date (YYYY-MM-DD)"
                 android:textSize="13sp"
+                android:enabled="false"
                 android:layout_marginEnd="4dp"/>
 
             <EditText
@@ -146,7 +168,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:hint="End Date (YYYY-MM-DD)"
-                android:textSize="13sp"/>
+                android:textSize="13sp"
+                android:enabled="false"/>
         </LinearLayout>
 
         <LinearLayout
@@ -163,6 +186,7 @@
                 android:hint="Monthly Rate ($)"
                 android:inputType="numberDecimal"
                 android:textSize="13sp"
+                android:enabled="false"
                 android:layout_marginEnd="4dp"/>
 
             <EditText
@@ -171,7 +195,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:hint="Status (Active/Completed)"
-                android:textSize="13sp"/>
+                android:textSize="13sp"
+                android:enabled="false"/>
         </LinearLayout>
 
         <View
@@ -225,6 +250,7 @@
             android:inputType="textMultiLine"
             android:lines="2"
             android:textSize="13sp"
+            android:enabled="false"
             android:layout_marginBottom="12dp"/>
 
         <!-- Save Button -->
@@ -233,6 +259,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="💾 Save Rental Changes"
+            android:enabled="false"
             android:layout_marginBottom="16dp"/>
 
         <!-- Operations / Actions Section -->

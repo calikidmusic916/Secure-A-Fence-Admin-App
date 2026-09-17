@@ -377,7 +377,7 @@ class InvoicesFragment : Fragment() {
                 orderType = orderTypeStr,
                 items = orderItems,
                 subtotal = subtotal,
-                deliveryFee = deliveryFee,
+                deliveryFee = currentDeliveryFee,
                 tax = currentTax,
                 totalAmount = currentGrandTotal,
                 status = "Processing",
@@ -616,6 +616,7 @@ class InvoicesFragment : Fragment() {
                 hint = "Quantity"
                 setText((item.deliveredQuantity ?: item.quantity).toString())
                 inputType = InputType.TYPE_CLASS_NUMBER
+                isEnabled = false
                 doAfterTextChanged { calculateInvoiceGrandTotal() }
             }
 
@@ -630,20 +631,43 @@ class InvoicesFragment : Fragment() {
 
         calculateInvoiceGrandTotal()
 
-        // Locking rule: If order is completed/invoiced, lock line items and fields to READ-ONLY
-        if (isInvoiced) {
-            dialogBinding.etInvoiceCustomerName.isEnabled = false
-            dialogBinding.etInvoiceCompany.isEnabled = false
-            dialogBinding.etInvoicePhone.isEnabled = false
-            dialogBinding.etInvoiceEmail.isEnabled = false
-            dialogBinding.etInvoiceDeliveryAddress.isEnabled = false
-            dialogBinding.cbInvoiceTaxable.isEnabled = false
-            dialogBinding.etInvoiceDiscount.isEnabled = false
+        var isEditingEnabled = false
+
+        fun toggleInvoiceEditing(enable: Boolean) {
+            isEditingEnabled = enable
+            dialogBinding.etInvoiceCustomerName.isEnabled = enable
+            dialogBinding.etInvoiceCompany.isEnabled = enable
+            dialogBinding.etInvoicePhone.isEnabled = enable
+            dialogBinding.etInvoiceEmail.isEnabled = enable
+            dialogBinding.etInvoiceDeliveryAddress.isEnabled = enable
+            dialogBinding.cbInvoiceTaxable.isEnabled = enable
+            dialogBinding.etInvoiceDiscount.isEnabled = enable
+            dialogBinding.spPaymentStatus.isEnabled = enable
+            dialogBinding.spPaymentMethod.isEnabled = enable
+            dialogBinding.btnSaveInvoiceChanges.isEnabled = enable
+
             for (inputField in itemQtyInputs.values) {
-                inputField.isEnabled = false
+                inputField.isEnabled = enable
             }
 
+            if (enable) {
+                dialogBinding.btnEnableInvoiceEditing.text = "🔒 Lock"
+                Toast.makeText(context, "✏️ Edit mode enabled. You can now modify order details.", Toast.LENGTH_SHORT).show()
+            } else {
+                dialogBinding.btnEnableInvoiceEditing.text = "✏️ Edit"
+            }
+        }
+
+        dialogBinding.btnEnableInvoiceEditing.setOnClickListener {
+            toggleInvoiceEditing(!isEditingEnabled)
+        }
+
+        // Locking rule: If order is completed/invoiced, lock line items and fields to READ-ONLY
+        if (isInvoiced) {
+            toggleInvoiceEditing(false)
+            dialogBinding.btnEnableInvoiceEditing.isEnabled = false
             dialogBinding.btnSaveInvoiceChanges.text = "🔄 Change Status Back to Processing (Re-Open Order)"
+            dialogBinding.btnSaveInvoiceChanges.isEnabled = true
         }
 
         val dialog = AlertDialog.Builder(context)

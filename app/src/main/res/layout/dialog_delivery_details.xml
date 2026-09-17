@@ -9,26 +9,31 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- Title -->
-        <TextView
-            android:id="@+id/tvDeliveryDialogTitle"
+        <!-- Header Title & Edit Toggle Button -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🚚 Dispatch &amp; Delivery Details"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/black"
-            android:layout_marginBottom="12dp"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
 
-        <!-- Section 1: Dispatch & Driver Info -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="🚚 Driver &amp; Transport Info"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/holo_blue_dark"
-            android:layout_marginBottom="6dp"/>
+            <TextView
+                android:id="@+id/tvDeliveryDialogTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🚚 Dispatch Details"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/black"/>
+
+            <Button
+                android:id="@+id/btnEnableEditing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✏️ Edit"
+                android:textSize="12sp"/>
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tvDeliveryOrderIdAndType"
@@ -37,6 +42,63 @@
             android:text="Order #ORD-101 | Type: Delivery"
             android:textSize="13sp"
             android:textColor="@android:color/darker_gray"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Section 1: Customer Contact Information (Read-Only) -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="👤 Customer Contact Details (Read-Only)"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
+            android:layout_marginBottom="4dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#F5F5F5"
+            android:padding="10dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/tvCustomerNameAndCompany"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Client: John Doe (Acme Construction)"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/black"/>
+
+            <TextView
+                android:id="@+id/tvCustomerPhoneAndEmail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Phone: (279) 261-3890 | Email: sales@acme.com"
+                android:textSize="13sp"
+                android:textColor="@android:color/black"
+                android:layout_marginTop="2dp"/>
+
+            <Button
+                android:id="@+id/btnCallCustomer"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="📞 Call Client"
+                android:textSize="11sp"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:layout_marginTop="6dp"/>
+        </LinearLayout>
+
+        <!-- Section 2: Driver & Dispatch Info -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🚚 Driver &amp; Transport Info"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@android:color/holo_blue_dark"
             android:layout_marginBottom="6dp"/>
 
         <EditText
@@ -46,6 +108,7 @@
             android:hint="Driver / Fleet Truck Name"
             android:inputType="textPersonName"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <LinearLayout
@@ -61,6 +124,7 @@
                 android:layout_weight="1"
                 android:hint="Dispatch Date (YYYY-MM-DD)"
                 android:textSize="13sp"
+                android:enabled="false"
                 android:layout_marginEnd="4dp"/>
 
             <EditText
@@ -70,7 +134,8 @@
                 android:layout_weight="1"
                 android:hint="Destination Address"
                 android:inputType="textPostalAddress"
-                android:textSize="13sp"/>
+                android:textSize="13sp"
+                android:enabled="false"/>
         </LinearLayout>
 
         <View
@@ -79,12 +144,12 @@
             android:background="#DDDDDD"
             android:layout_marginVertical="8dp"/>
 
-        <!-- Section 2: Status & Time Tracking -->
+        <!-- Section 3: Status & Time Tracking -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="⏱️ Delivery / Pickup Status &amp; Time"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="@android:color/holo_blue_dark"
             android:layout_marginBottom="6dp"/>
@@ -108,7 +173,8 @@
                 android:id="@+id/spDeliveryStatus"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"/>
+                android:layout_weight="1"
+                android:enabled="false"/>
         </LinearLayout>
 
         <TextView
@@ -127,6 +193,7 @@
             android:layout_height="wrap_content"
             android:hint="e.g. 10:30 AM or 25 mins or 2:00 PM Pickup"
             android:textSize="14sp"
+            android:enabled="false"
             android:layout_marginBottom="8dp"/>
 
         <View
@@ -135,12 +202,12 @@
             android:background="#DDDDDD"
             android:layout_marginVertical="8dp"/>
 
-        <!-- Section 3: Notes & Instructions -->
+        <!-- Section 4: Notes & Instructions -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="📝 Pickup &amp; Delivery Access Notes"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="@android:color/holo_blue_dark"
             android:layout_marginBottom="4dp"/>
@@ -153,6 +220,7 @@
             android:inputType="textMultiLine"
             android:lines="2"
             android:textSize="13sp"
+            android:enabled="false"
             android:layout_marginBottom="8dp"/>
 
         <View
@@ -161,12 +229,12 @@
             android:background="#DDDDDD"
             android:layout_marginVertical="8dp"/>
 
-        <!-- Section 4: Proof Photo -->
+        <!-- Section 5: Proof Photo -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="📸 Delivery / Pickup Proof Photo"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="@android:color/holo_blue_dark"
             android:layout_marginBottom="4dp"/>
@@ -185,12 +253,12 @@
             android:background="#DDDDDD"
             android:layout_marginVertical="8dp"/>
 
-        <!-- Section 5: Actual Delivered Quantities -->
+        <!-- Section 6: Actual Delivered Quantities -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="📦 Delivered Item Quantities"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="@android:color/holo_blue_dark"
             android:layout_marginBottom="4dp"/>
@@ -208,12 +276,12 @@
             android:background="#DDDDDD"
             android:layout_marginVertical="8dp"/>
 
-        <!-- Section 6: Tax & In-Person Discount Adjustments -->
+        <!-- Section 7: Tax & In-Person Discount Adjustments -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="💵 Tax &amp; In-Person Discounts"
-            android:textSize="15sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="@android:color/holo_blue_dark"
             android:layout_marginBottom="4dp"/>
@@ -225,6 +293,7 @@
             android:text="Taxable Order (8% CA Sales Tax)"
             android:checked="true"
             android:textSize="13sp"
+            android:enabled="false"
             android:layout_marginBottom="4dp"/>
 
         <LinearLayout
@@ -241,6 +310,7 @@
                 android:hint="In-Person Discount ($)"
                 android:inputType="numberDecimal"
                 android:textSize="13sp"
+                android:enabled="false"
                 android:layout_marginEnd="4dp"/>
 
             <EditText
@@ -250,7 +320,8 @@
                 android:layout_weight="1"
                 android:hint="Final Price Override ($)"
                 android:inputType="numberDecimal"
-                android:textSize="13sp"/>
+                android:textSize="13sp"
+                android:enabled="false"/>
         </LinearLayout>
 
         <TextView
@@ -273,6 +344,7 @@
             android:text="💾 Save Dispatch Updates"
             android:textSize="13sp"
             android:textStyle="bold"
+            android:enabled="false"
             android:layout_marginBottom="8dp"/>
 
         <LinearLayout
