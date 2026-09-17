@@ -74,16 +74,18 @@ class DeliveriesFragment : Fragment() {
                     val allShipments = response.body()!!
 
                     activeShipmentsList = allShipments.filter {
-                        !it.status.equals("Delivered", ignoreCase = true) &&
-                        !it.status.equals("Picked Up / Returned", ignoreCase = true) &&
-                        !it.status.equals("Completed", ignoreCase = true) &&
-                        !it.status.equals("Cancelled", ignoreCase = true)
+                        val status = (it.status ?: "").trim()
+                        !status.equals("Delivered", ignoreCase = true) &&
+                        !status.equals("Picked Up / Returned", ignoreCase = true) &&
+                        !status.equals("Completed", ignoreCase = true) &&
+                        !status.equals("Cancelled", ignoreCase = true)
                     }.toMutableList()
 
                     completedShipmentsList = allShipments.filter {
-                        it.status.equals("Delivered", ignoreCase = true) ||
-                        it.status.equals("Picked Up / Returned", ignoreCase = true) ||
-                        it.status.equals("Completed", ignoreCase = true)
+                        val status = (it.status ?: "").trim()
+                        status.equals("Delivered", ignoreCase = true) ||
+                        status.equals("Picked Up / Returned", ignoreCase = true) ||
+                        status.equals("Completed", ignoreCase = true)
                     }.toMutableList()
 
                     binding.tvActiveDeliveriesHeader.text = "🚚 Active Dispatches & Deliveries (${activeShipmentsList.size})"
@@ -99,7 +101,8 @@ class DeliveriesFragment : Fragment() {
                     Toast.makeText(context, "Failed to load dispatches", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                val errMsg = e.message.orEmpty().ifEmpty { "Unable to load dispatches" }
+                Toast.makeText(context, "Dispatches: $errMsg", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -107,12 +110,22 @@ class DeliveriesFragment : Fragment() {
     private fun setupActiveAdapter() {
         activeAdapter = GenericAdapter(
             activeShipmentsList,
-            titleProvider = { "🚚 Priority #${activeShipmentsList.indexOf(it) + 1} - ${it.type.uppercase()}" },
+            titleProvider = {
+                val typeStr = (it.type ?: "Delivery").ifEmpty { "Delivery" }
+                "🚚 Priority #${activeShipmentsList.indexOf(it) + 1} - ${typeStr.uppercase(Locale.US)}"
+            },
             subtitleProvider = {
                 val etaStr = if (!it.eta.isNullOrEmpty()) " | ETA/Time: ${it.eta}" else ""
-                "Order: #${it.orderId.ifEmpty { it.id }}\nDestination: ${it.destination}\nDriver: ${it.driverName}$etaStr"
+                val idStr = (it.id ?: "SHP-101").ifEmpty { "SHP-101" }
+                val refOrderId = (it.orderId ?: "").ifEmpty { idStr }
+                val destStr = (it.destination ?: "Sacramento Warehouse").ifEmpty { "Sacramento Warehouse" }
+                val driverStr = (it.driverName ?: "Unassigned Dispatcher").ifEmpty { "Unassigned Dispatcher" }
+                "Order: #$refOrderId\nDestination: $destStr\nDriver: $driverStr$etaStr"
             },
-            statusProvider = { "Status: ${it.status.uppercase()}" },
+            statusProvider = {
+                val statusStr = (it.status ?: "Scheduled").ifEmpty { "Scheduled" }
+                "Status: ${statusStr.uppercase(Locale.US)}"
+            },
             rightImageResIdProvider = { R.drawable.logo },
             onItemClick = { showShipmentDetailsDialog(it) }
         )
@@ -122,9 +135,21 @@ class DeliveriesFragment : Fragment() {
     private fun setupCompletedAdapter() {
         completedAdapter = GenericAdapter(
             completedShipmentsList,
-            titleProvider = { "✅ COMPLETED - ${it.type.uppercase()}" },
-            subtitleProvider = { "Order: #${it.orderId.ifEmpty { it.id }}\nDestination: ${it.destination}\nDriver: ${it.driverName}" },
-            statusProvider = { "Status: ${it.status.uppercase()} [DELIVERED]" },
+            titleProvider = {
+                val typeStr = (it.type ?: "Delivery").ifEmpty { "Delivery" }
+                "✅ COMPLETED - ${typeStr.uppercase(Locale.US)}"
+            },
+            subtitleProvider = {
+                val idStr = (it.id ?: "SHP-101").ifEmpty { "SHP-101" }
+                val refOrderId = (it.orderId ?: "").ifEmpty { idStr }
+                val destStr = (it.destination ?: "Sacramento Warehouse").ifEmpty { "Sacramento Warehouse" }
+                val driverStr = (it.driverName ?: "Unassigned Dispatcher").ifEmpty { "Unassigned Dispatcher" }
+                "Order: #$refOrderId\nDestination: $destStr\nDriver: $driverStr"
+            },
+            statusProvider = {
+                val statusStr = (it.status ?: "Delivered").ifEmpty { "Delivered" }
+                "Status: ${statusStr.uppercase(Locale.US)} [DELIVERED]"
+            },
             rightImageResIdProvider = { R.drawable.logo },
             onItemClick = { showShipmentDetailsDialog(it) }
         )
@@ -136,19 +161,21 @@ class DeliveriesFragment : Fragment() {
         val token = SessionManager.getToken(context) ?: return
         val dialogBinding = DialogDeliveryDetailsBinding.inflate(LayoutInflater.from(context))
 
-        val targetOrderId = shipment.orderId.ifEmpty { shipment.id }
-        val dispatchType = shipment.type.ifEmpty { "Delivery" }
+        val shipId = (shipment.id ?: "SHP-101").ifEmpty { "SHP-101" }
+        val targetOrderId = (shipment.orderId ?: "").ifEmpty { shipId }
+        val dispatchType = (shipment.type ?: "Delivery").ifEmpty { "Delivery" }
 
-        dialogBinding.tvDeliveryDialogTitle.text = "🚚 Dispatch Details #${shipment.id}"
-        dialogBinding.tvDeliveryOrderIdAndType.text = "Ref Order #$targetOrderId | Dispatch Type: ${dispatchType.uppercase()}"
+        dialogBinding.tvDeliveryDialogTitle.text = "🚚 Dispatch Details #$shipId"
+        dialogBinding.tvDeliveryOrderIdAndType.text = "Ref Order #$targetOrderId | Dispatch Type: ${dispatchType.uppercase(Locale.US)}"
 
-        dialogBinding.etDriverName.setText(shipment.driverName)
-        dialogBinding.etDispatchDate.setText(shipment.dispatchDate)
-        dialogBinding.etDestinationAddress.setText(shipment.destination)
+        dialogBinding.etDriverName.setText(shipment.driverName.orEmpty())
+        dialogBinding.etDispatchDate.setText(shipment.dispatchDate.orEmpty())
+        dialogBinding.etDestinationAddress.setText(shipment.destination.orEmpty())
 
         val statuses = arrayOf("Scheduled", "In Route", "Pickup Scheduled", "Delivered", "Picked Up / Returned", "Cancelled")
         dialogBinding.spDeliveryStatus.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, statuses)
-        val statusIndex = statuses.indexOfFirst { it.equals(shipment.status, ignoreCase = true) }
+        val currentStatus = shipment.status.orEmpty()
+        val statusIndex = statuses.indexOfFirst { it.equals(currentStatus, ignoreCase = true) }
         if (statusIndex >= 0) dialogBinding.spDeliveryStatus.setSelection(statusIndex)
 
         dialogBinding.spDeliveryStatus.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -173,8 +200,8 @@ class DeliveriesFragment : Fragment() {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        dialogBinding.etEtaOrPickupTime.setText(shipment.eta)
-        dialogBinding.etDeliveryNotes.setText(shipment.notes)
+        dialogBinding.etEtaOrPickupTime.setText(shipment.eta.orEmpty())
+        dialogBinding.etDeliveryNotes.setText(shipment.notes.orEmpty())
         dialogBinding.cbIsTaxable.isChecked = shipment.isTaxable
         if (shipment.discountAmount > 0) dialogBinding.etDiscountAmount.setText(shipment.discountAmount.toString())
         if (shipment.overrideTotal != null) dialogBinding.etFinalPriceOverride.setText(shipment.overrideTotal.toString())
@@ -207,21 +234,25 @@ class DeliveriesFragment : Fragment() {
             return finalTotal
         }
 
-        // Fetch Customer Contact Info
+        // Fetch Customer Contact Info safely
         lifecycleScope.launch {
             try {
                 val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
                 if (salesResponse.isSuccessful && salesResponse.body() != null) {
                     val matchingOrder = salesResponse.body()!!.find {
-                        it.id.equals(targetOrderId, ignoreCase = true) || it.id.equals(shipment.id, ignoreCase = true)
+                        it.id.equals(targetOrderId, ignoreCase = true) || it.id.equals(shipId, ignoreCase = true)
                     }
                     if (matchingOrder != null) {
                         val companyStr = if (!matchingOrder.customerCompany.isNullOrEmpty()) " (${matchingOrder.customerCompany})" else ""
-                        dialogBinding.tvCustomerNameAndCompany.text = "Client: ${matchingOrder.customerName}$companyStr"
-                        dialogBinding.tvCustomerPhoneAndEmail.text = "Phone: ${matchingOrder.customerPhone.ifEmpty { "(279) 261-3890" }} | Email: ${matchingOrder.customerEmail}"
+                        val custName = matchingOrder.customerName.ifEmpty { "Direct Client" }
+                        val custPhone = matchingOrder.customerPhone.ifEmpty { "(279) 261-3890" }
+                        val custEmail = matchingOrder.customerEmail.ifEmpty { "sales@secureafence.com" }
+
+                        dialogBinding.tvCustomerNameAndCompany.text = "Client: $custName$companyStr"
+                        dialogBinding.tvCustomerPhoneAndEmail.text = "Phone: $custPhone | Email: $custEmail"
 
                         dialogBinding.btnCallCustomer.setOnClickListener {
-                            val phoneIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${matchingOrder.customerPhone}"))
+                            val phoneIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$custPhone"))
                             startActivity(phoneIntent)
                         }
 
@@ -329,8 +360,6 @@ class DeliveriesFragment : Fragment() {
                 item.copy(deliveredQuantity = qty, total = qty * item.unitPrice)
             }
 
-            val finalTotal = calculateAdjustedTotal()
-
             val updateRequest = ShipmentUpdateRequest(
                 driverName = updatedDriver,
                 dispatchDate = updatedDate,
@@ -346,9 +375,9 @@ class DeliveriesFragment : Fragment() {
 
             lifecycleScope.launch {
                 try {
-                    val resp = ApiClient.instance.updateShipment("Bearer $token", shipment.id, updateRequest)
+                    val resp = ApiClient.instance.updateShipment("Bearer $token", shipId, updateRequest)
                     if (resp.isSuccessful) {
-                        Toast.makeText(context, "💾 Dispatch #${shipment.id} updated!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "💾 Dispatch #$shipId updated!", Toast.LENGTH_SHORT).show()
                     }
                     dialog.dismiss()
                     loadDeliveries()
@@ -364,7 +393,7 @@ class DeliveriesFragment : Fragment() {
             lifecycleScope.launch {
                 try {
                     ApiClient.instance.updateShipment(
-                        "Bearer $token", shipment.id,
+                        "Bearer $token", shipId,
                         ShipmentUpdateRequest(status = "Delivered")
                     )
                     ApiClient.instance.updateOrderStatus(
@@ -397,7 +426,7 @@ class DeliveriesFragment : Fragment() {
         dialogBinding.btnCancelDelivery.setOnClickListener {
             lifecycleScope.launch {
                 try {
-                    ApiClient.instance.updateShipment("Bearer $token", shipment.id, ShipmentUpdateRequest(status = "Cancelled"))
+                    ApiClient.instance.updateShipment("Bearer $token", shipId, ShipmentUpdateRequest(status = "Cancelled"))
                     Toast.makeText(context, "🚫 Dispatch cancelled", Toast.LENGTH_SHORT).show()
                     dialog.dismiss()
                     loadDeliveries()
@@ -412,12 +441,12 @@ class DeliveriesFragment : Fragment() {
         dialogBinding.btnDeleteDelivery.setOnClickListener {
             AlertDialog.Builder(context)
                 .setTitle("Delete Dispatch Record")
-                .setMessage("Are you sure you want to PERMANENTLY delete dispatch #${shipment.id}? This cannot be undone.")
+                .setMessage("Are you sure you want to PERMANENTLY delete dispatch #$shipId? This cannot be undone.")
                 .setPositiveButton("Delete Record") { _, _ ->
                     lifecycleScope.launch {
                         try {
-                            ApiClient.instance.deleteShipment("Bearer $token", shipment.id)
-                            Toast.makeText(context, "🗑️ Dispatch #${shipment.id} deleted", Toast.LENGTH_SHORT).show()
+                            ApiClient.instance.deleteShipment("Bearer $token", shipId)
+                            Toast.makeText(context, "🗑️ Dispatch #$shipId deleted", Toast.LENGTH_SHORT).show()
                             dialog.dismiss()
                             loadDeliveries()
                         } catch (e: Exception) {
