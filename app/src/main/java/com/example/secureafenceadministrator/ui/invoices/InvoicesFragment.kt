@@ -277,23 +277,24 @@ class InvoicesFragment : Fragment() {
 
         checkoutBinding.tvCheckoutItemsList.text = itemsSummary.toString().trim()
 
-        val deliveryFee = if (subtotal > 0) 50.0 else 0.0
+        var currentDeliveryFee = 0.0
         var currentTax = 0.0
-        var currentGrandTotal = subtotal + deliveryFee
+        var currentGrandTotal = subtotal
+        var selectedDistance = 0.0
 
-        fun updateFinancials(customer: Customer) {
-            selectedCustomer = customer
-            currentTax = if (customer.isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
-            currentGrandTotal = subtotal + deliveryFee + currentTax
+        fun updateFinancials() {
+            currentDeliveryFee = if (subtotal > 0 && selectedDistance > 0.0) 50.0 else 0.0
+            currentTax = if (selectedCustomer.isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
+            currentGrandTotal = subtotal + currentDeliveryFee + currentTax
 
             checkoutBinding.tvCheckoutSubtotal.text = "Subtotal: $" + String.format(Locale.US, "%.2f", subtotal)
-            checkoutBinding.tvCheckoutDeliveryFee.text = "Delivery Transport Fee: $" + String.format(Locale.US, "%.2f", deliveryFee)
-            checkoutBinding.tvCheckoutTax.text = if (customer.isTaxable) "Tax (8%): $" + String.format(Locale.US, "%.2f", currentTax) else "Tax: $0.00 (TAX EXEMPT)"
+            checkoutBinding.tvCheckoutDeliveryFee.text = "Delivery Transport Fee: $" + String.format(Locale.US, "%.2f", currentDeliveryFee)
+            checkoutBinding.tvCheckoutTax.text = if (selectedCustomer.isTaxable) "Tax (8%): $" + String.format(Locale.US, "%.2f", currentTax) else "Tax: $0.00 (TAX EXEMPT)"
             checkoutBinding.tvCheckoutGrandTotal.text = "Grand Total: $" + String.format(Locale.US, "%.2f", currentGrandTotal)
         }
 
         fun populateCustomerFields(customer: Customer) {
-            updateFinancials(customer)
+            selectedCustomer = customer
             checkoutBinding.etCheckoutCustomerName.setText(customer.name)
             checkoutBinding.etCheckoutCompany.setText(customer.company.orEmpty())
             checkoutBinding.etCheckoutPhone.setText(customer.phone.orEmpty())
@@ -307,6 +308,7 @@ class InvoicesFragment : Fragment() {
             } else {
                 checkoutBinding.spCheckoutJobsite.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, arrayOf("No registered jobsites"))
             }
+            updateFinancials()
         }
 
         populateCustomerFields(selectedCustomer)
