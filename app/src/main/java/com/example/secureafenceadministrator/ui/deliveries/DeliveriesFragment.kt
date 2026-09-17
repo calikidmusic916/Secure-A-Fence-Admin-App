@@ -70,8 +70,8 @@ class DeliveriesFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.getShipments("Bearer $token")
-                if (response.isSuccessful && response.body() != null) {
-                    val allShipments = response.body()!!
+                if (response.isSuccessful) {
+                    val allShipments = response.body() ?: emptyList()
 
                     activeShipmentsList = allShipments.filter {
                         val status = (it.status ?: "").trim()
@@ -98,7 +98,7 @@ class DeliveriesFragment : Fragment() {
                     Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
                     SessionManager.clearSession(context)
                 } else {
-                    Toast.makeText(context, "Failed to load dispatches", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed to load dispatches (${response.code()})", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 val errMsg = e.message.orEmpty().ifEmpty { "Unable to load dispatches" }
