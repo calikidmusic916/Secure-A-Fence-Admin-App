@@ -6,10 +6,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -77,6 +80,51 @@ class PaymentsFragment : Fragment() {
         binding.btnVirtualTerminal.setOnClickListener {
             showCustomChargeTerminalDialog()
         }
+
+        binding.btnStripeSettings.setOnClickListener {
+            showStripeSettingsDialog()
+        }
+    }
+
+    private fun showStripeSettingsDialog() {
+        val context = context ?: return
+        val builder = AlertDialog.Builder(context)
+        builder.setTitle("⚙️ Configure Stripe API Keys")
+
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 16)
+        }
+
+        val etPk = EditText(context).apply {
+            hint = "Stripe Publishable Key (pk_test_... or pk_live_...)"
+            setText(SessionManager.getStripePublishableKey(context))
+            textSize = 13f
+        }
+
+        val etSk = EditText(context).apply {
+            hint = "Stripe Secret Key (sk_test_... or sk_live_...)"
+            setText(SessionManager.getStripeSecretKey(context))
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            textSize = 13f
+        }
+
+        layout.addView(etPk)
+        layout.addView(etSk)
+        builder.setView(layout)
+
+        builder.setPositiveButton("Save Keys") { _, _ ->
+            val pk = etPk.text.toString().trim()
+            val sk = etSk.text.toString().trim()
+
+            if (pk.isNotEmpty()) SessionManager.saveStripePublishableKey(context, pk)
+            if (sk.isNotEmpty()) SessionManager.saveStripeSecretKey(context, sk)
+
+            if (pk.isNotEmpty()) stripeInstance = Stripe(context, pk)
+            Toast.makeText(context, "💾 Stripe API Keys updated and saved!", Toast.LENGTH_SHORT).show()
+        }
+        builder.setNegativeButton("Cancel", null)
+        builder.show()
     }
 
     private fun getMergedOrders(remoteList: List<Order>): List<Order> {
@@ -365,24 +413,51 @@ class PaymentsFragment : Fragment() {
             lifecycleScope.launch {
                 try {
                     val sk = SessionManager.getStripeSecretKey(context)
-                    val bearerToken = "Bearer $sk"
                     val amountCents = Math.round(chargeAmount * 100)
-
                     val validEmail = if (email.isNotEmpty() && email.contains("@")) email else null
 
-                    val intentResponse = StripeApiClient.instance.createPaymentIntent(
-                        bearerToken = bearerToken,
-                        amountCents = amountCents,
-                        currency = "usd",
-                        description = chargeDesc,
-                        receiptEmail = validEmail,
-                        orderId = orderId
-                    )
+                    var piId = ""
+                    var isSuccess = false
+                    var errMsg = ""
 
-                    if (intentResponse.isSuccessful && intentResponse.body() != null) {
-                        val body = intentResponse.body()!!
-                        val piId = body["id"] as? String ?: ("pi_" + System.currentTimeMillis())
+                    if (sk.isNotEmpty()) {
+                        val bearerToken = "Bearer $sk"
+                        val intentResponse = StripeApiClient.instance.createPaymentIntent(
+                            bearerToken = bearerToken,
+                            amountCents = amountCents,
+                            currency = "usd",
+                            description = chargeDesc,
+                            receiptEmail = validEmail,
+                            orderId = orderId
+                        )
+                        if (intentResponse.isSuccessful && intentResponse.body() != null) {
+                            piId = intentResponse.body()!!["id"] as? String ?: ("pi_" + System.currentTimeMillis())
+                            isSuccess = true
+                        } else {
+                            errMsg = intentResponse.errorBody()?.string() ?: "Stripe API Error"
+                        }
+                    } else {
+                        // Call backend server payment intent creation securely
+                        val payload = mapOf(
+                            "amountCents" to amountCents,
+                            "currency" to "usd",
+                            "description" to chargeDesc,
+                            "customerEmail" to (email.ifEmpty { "sales@secureafence.com" }),
+                            "orderId" to orderId,
+                            "isRentalCharge" to isRecurring
+                        )
+                        val serverResp = ApiClient.instance.createServerPaymentIntent("Bearer $token", payload)
+                        if (serverResp.isSuccessful && serverResp.body() != null) {
+                            piId = serverResp.body()!!["paymentIntentId"] as? String
+                                ?: serverResp.body()!!["id"] as? String
+                                ?: ("pi_" + System.currentTimeMillis())
+                            isSuccess = true
+                        } else {
+                            errMsg = serverResp.errorBody()?.string() ?: "Server Payment Error"
+                        }
+                    }
 
+                    if (isSuccess && piId.isNotEmpty()) {
                         val methodType = if (isRecurring) "card (Stripe Recurring Monthly)" else "card (Stripe)"
                         val todayStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
 
@@ -402,12 +477,10 @@ class PaymentsFragment : Fragment() {
 
                         addStripeTransaction(record)
 
-                        // Update backend and local cache payment status
                         if (isRecurring) {
                             ApiClient.instance.generateMonthlyRentalInvoice("Bearer $token", orderId)
                         } else {
                             ApiClient.instance.updateOrderPayment("Bearer $token", orderId, OrderPaymentUpdateRequest("Paid", "Stripe Credit Card"))
-                            saveLocalOrderPaymentStatus(orderId, "Paid", "Stripe Credit Card")
                         }
 
                         dialogBinding.progressStripeCharge.visibility = View.GONE
@@ -416,17 +489,16 @@ class PaymentsFragment : Fragment() {
                         dialog.dismiss()
                         loadPendingOrders()
                     } else {
-                        val errBody = intentResponse.errorBody()?.string() ?: ""
-                        val errMsg = if (errBody.contains("message")) {
+                        val cleanErr = if (errMsg.contains("message")) {
                             try {
-                                val errObj = Gson().fromJson(errBody, Map::class.java)
+                                val errObj = Gson().fromJson(errMsg, Map::class.java)
                                 val errInner = errObj["error"] as? Map<*, *>
-                                errInner?.get("message") as? String ?: errBody
+                                errInner?.get("message") as? String ?: errMsg
                             } catch (e: Exception) {
-                                errBody
+                                errMsg
                             }
                         } else {
-                            "Stripe API HTTP ${intentResponse.code()}"
+                            errMsg
                         }
 
                         val todayStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
@@ -438,7 +510,7 @@ class PaymentsFragment : Fragment() {
                             amount = chargeAmount,
                             taxAmount = Math.round((chargeAmount - (chargeAmount / 1.08)) * 100.0) / 100.0,
                             status = "FAILED",
-                            paymentMethodType = "card ($errMsg)",
+                            paymentMethodType = "card ($cleanErr)",
                             timestamp = todayStr,
                             receiptUrl = null,
                             isTerminalTransaction = isRecurring
@@ -447,7 +519,7 @@ class PaymentsFragment : Fragment() {
 
                         dialogBinding.progressStripeCharge.visibility = View.GONE
                         dialogBinding.btnProcessStripePayment.isEnabled = true
-                        Toast.makeText(context, "❌ Stripe Error: $errMsg", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "❌ Stripe Error: $cleanErr", Toast.LENGTH_LONG).show()
                     }
 
                 } catch (e: Exception) {
@@ -536,34 +608,27 @@ class PaymentsFragment : Fragment() {
             }
         }
 
-        if (stripeHistoryList.isEmpty()) {
-            stripeHistoryList = mutableListOf(
-                StripeTransactionRecord(
-                    id = "pi_3Mxt90ERCsfh1i1D",
-                    orderId = "ORD-101",
-                    customerName = "Sacramento Construction LLC",
-                    customerEmail = "billing@sacconstruction.com",
-                    amount = 450.00,
-                    taxAmount = 33.33,
-                    status = "SUCCEEDED",
-                    paymentMethodType = "card (Visa)",
-                    timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
-                    isTerminalTransaction = false
-                ),
-                StripeTransactionRecord(
-                    id = "pi_failed_102",
-                    orderId = "ORD-102",
-                    customerName = "Apex Builders",
-                    customerEmail = "billing@apexbuilders.com",
-                    amount = 250.00,
-                    taxAmount = 18.52,
-                    status = "FAILED",
-                    paymentMethodType = "card (Declined - Insufficient Funds)",
-                    timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()),
-                    isTerminalTransaction = false
-                )
-            )
+        val token = SessionManager.getToken(context)
+        if (!token.isNullOrEmpty()) {
+            lifecycleScope.launch {
+                try {
+                    val resp = ApiClient.instance.getPaymentsTransactions("Bearer $token")
+                    if (resp.isSuccessful && !resp.body().isNullOrEmpty()) {
+                        val remoteList = resp.body()!!
+                        for (remoteTx in remoteList) {
+                            if (stripeHistoryList.none { it.id == remoteTx.id }) {
+                                stripeHistoryList.add(remoteTx)
+                            }
+                        }
+                        stripeHistoryList.sortByDescending { it.timestamp }
+                        updateStripeHistoryUI()
+                    }
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
         }
+
         updateStripeHistoryUI()
     }
 

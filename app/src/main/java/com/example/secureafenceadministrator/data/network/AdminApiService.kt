@@ -224,36 +224,53 @@ interface AdminApiService {
     @POST("api/payments/terminal/location")
     suspend fun createTerminalLocation(
         @Header("Authorization") token: String,
-        @Body payload: Map<String, Any>
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
     ): Response<Map<String, Any>>
 
     @POST("api/payments/terminal/reader")
     suspend fun registerTerminalReader(
         @Header("Authorization") token: String,
-        @Body payload: Map<String, Any>
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
     ): Response<Map<String, Any>>
 
     @POST("api/payments/terminal/create-intent")
     suspend fun createTerminalPaymentIntent(
         @Header("Authorization") token: String,
-        @Body payload: Map<String, Any>
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
     ): Response<Map<String, Any>>
 
     @POST("api/payments/terminal/process-payment")
     suspend fun processTerminalPayment(
         @Header("Authorization") token: String,
-        @Body payload: Map<String, Any>
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
     ): Response<Map<String, Any>>
 
     @POST("api/payments/terminal/simulate-payment")
     suspend fun simulateTerminalPayment(
         @Header("Authorization") token: String,
-        @Body payload: Map<String, Any>
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
     ): Response<Map<String, Any>>
 
     @POST("api/payments/terminal/capture-intent")
     suspend fun captureTerminalPaymentIntent(
         @Header("Authorization") token: String,
-        @Body payload: Map<String, Any>
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
     ): Response<Map<String, Any>>
+
+    @POST("api/payments/create-intent")
+    suspend fun createServerPaymentIntent(
+        @Header("Authorization") token: String,
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
+    ): Response<Map<String, Any>>
+
+    @POST("api/payments/confirm")
+    suspend fun confirmServerPayment(
+        @Header("Authorization") token: String,
+        @Body payload: Map<String, @JvmSuppressWildcards Any>
+    ): Response<Map<String, Any>>
+
+    @GET("api/payments/transactions")
+    suspend fun getPaymentsTransactions(
+        @Header("Authorization") token: String
+    ): Response<List<StripeTransactionRecord>>
 }
