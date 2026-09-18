@@ -1,6 +1,7 @@
 package com.example.secureafenceadministrator.ui.deliveries
 
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
@@ -30,6 +31,8 @@ import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.DialogDeliveryDetailsBinding
 import com.example.secureafenceadministrator.databinding.FragmentDeliveriesBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -60,6 +63,81 @@ class DeliveriesFragment : Fragment() {
         loadDeliveries()
     }
 
+    private fun getMergedOrders(remoteList: List<Order>): List<Order> {
+        val ctx = context ?: return remoteList
+        val prefs = ctx.getSharedPreferences("local_order_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        return try {
+            val type = object : TypeToken<MutableMap<String, Order>>() {}.type
+            val localMap: MutableMap<String, Order> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (localMap.isEmpty()) return remoteList
+
+            val resultList = remoteList.toMutableList()
+            for (i in resultList.indices) {
+                val remote = resultList[i]
+                val localOverride = localMap[remote.id]
+                if (localOverride != null) {
+                    resultList[i] = localOverride
+                }
+            }
+            for ((_, localOrd) in localMap) {
+                if (resultList.none { it.id == localOrd.id }) {
+                    resultList.add(localOrd)
+                }
+            }
+            resultList
+        } catch (e: Exception) {
+            remoteList
+        }
+    }
+
+    private fun saveLocalShipmentOverride(shipment: Shipment) {
+        val ctx = context ?: return
+        val prefs = ctx.getSharedPreferences("local_shipment_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        try {
+            val type = object : TypeToken<MutableMap<String, Shipment>>() {}.type
+            val map: MutableMap<String, Shipment> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (shipment.id.isNotEmpty()) {
+                map[shipment.id] = shipment
+            }
+            if (shipment.orderId.isNotEmpty()) {
+                map[shipment.orderId] = shipment
+            }
+            prefs.edit().putString("overrides_json", Gson().toJson(map)).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun getMergedShipments(remoteList: List<Shipment>): List<Shipment> {
+        val ctx = context ?: return remoteList
+        val prefs = ctx.getSharedPreferences("local_shipment_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        return try {
+            val type = object : TypeToken<MutableMap<String, Shipment>>() {}.type
+            val localMap: MutableMap<String, Shipment> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (localMap.isEmpty()) return remoteList
+
+            val resultList = remoteList.toMutableList()
+            for (i in resultList.indices) {
+                val remote = resultList[i]
+                val localOverride = localMap[remote.id] ?: localMap[remote.orderId]
+                if (localOverride != null) {
+                    resultList[i] = localOverride
+                }
+            }
+            for ((_, localShp) in localMap) {
+                if (resultList.none { it.id == localShp.id || (localShp.orderId.isNotEmpty() && it.orderId == localShp.orderId) }) {
+                    resultList.add(localShp)
+                }
+            }
+            resultList
+        } catch (e: Exception) {
+            remoteList
+        }
+    }
+
     private fun loadDeliveries() {
         val context = context ?: return
         val token = SessionManager.getToken(context)
@@ -76,31 +154,37 @@ class DeliveriesFragment : Fragment() {
                 val rawShipments = if (shipmentsResp.isSuccessful && shipmentsResp.body() != null) shipmentsResp.body()!! else emptyList()
                 val rawOrders = if (ordersResp.isSuccessful && ordersResp.body() != null) ordersResp.body()!! else emptyList()
 
+                val mergedOrders = getMergedOrders(rawOrders)
+                val mergedShipments = getMergedShipments(rawShipments)
+
                 val mergedShipmentsMap = mutableMapOf<String, Shipment>()
 
-                // 1. Convert all orders into baseline Shipment dispatches
-                for (order in rawOrders) {
-                    val dispatchType = if (order.orderType.equals("rental", ignoreCase = true)) "Rental Delivery" else "Sales Delivery"
+                // 1. Convert all merged orders into baseline Shipment dispatches
+                for (order in mergedOrders) {
+                    val orderIdStr = order.id.orEmpty()
+                    val dispatchType = if (order.orderType.orEmpty().equals("rental", ignoreCase = true)) "Rental Delivery" else "Sales Delivery"
                     val isTaxable = order.tax > 0 || order.isTaxable
                     val baseShipment = Shipment(
-                        id = order.id,
-                        orderId = order.id,
+                        id = orderIdStr,
+                        orderId = orderIdStr,
                         type = dispatchType,
                         driverName = "Unassigned Dispatcher",
-                        dispatchDate = order.deliveryDate.ifEmpty { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) },
-                        status = order.status.ifEmpty { "Scheduled" },
-                        destination = order.deliveryAddress.ifEmpty { "Sacramento Warehouse" },
-                        notes = "Jobsite Contact: ${order.customerName}",
+                        dispatchDate = order.deliveryDate.orEmpty().ifEmpty { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) },
+                        status = order.status.orEmpty().ifEmpty { "Scheduled" },
+                        destination = order.deliveryAddress.orEmpty().ifEmpty { "Sacramento Warehouse" },
+                        notes = "Jobsite Contact: ${order.customerName.orEmpty()}",
                         deliveredItems = order.items,
                         isTaxable = isTaxable,
                         discountAmount = order.discountAmount,
                         overrideTotal = order.overrideTotal
                     )
-                    mergedShipmentsMap[order.id] = baseShipment
+                    if (orderIdStr.isNotEmpty()) {
+                        mergedShipmentsMap[orderIdStr] = baseShipment
+                    }
                 }
 
                 // 2. Merge driver name, ETA, notes, and photos from shipments table
-                for (shp in rawShipments) {
+                for (shp in mergedShipments) {
                     val key = (shp.orderId ?: "").ifEmpty { shp.id ?: "" }
                     if (key.isNotEmpty()) {
                         val existing = mergedShipmentsMap[key]
@@ -112,11 +196,11 @@ class DeliveriesFragment : Fragment() {
                                 destination = (shp.destination ?: "").ifEmpty { existing.destination },
                                 notes = (shp.notes ?: "").ifEmpty { existing.notes },
                                 eta = shp.eta.orEmpty(),
-                                deliveryPhotos = shp.deliveryPhotos,
+                                deliveryPhotos = shp.deliveryPhotos ?: emptyList(),
                                 deliveredItems = if (!shp.deliveredItems.isNullOrEmpty()) shp.deliveredItems else existing.deliveredItems
                             )
                         } else {
-                            mergedShipmentsMap[shp.id ?: "SHP-${System.currentTimeMillis()}"] = shp
+                            mergedShipmentsMap[shp.id.orEmpty().ifEmpty { "SHP-${System.currentTimeMillis()}" }] = shp
                         }
                     }
                 }
@@ -246,39 +330,11 @@ class DeliveriesFragment : Fragment() {
 
         dialogBinding.etEtaOrPickupTime.setText(shipment.eta.orEmpty())
         dialogBinding.etDeliveryNotes.setText(shipment.notes.orEmpty())
-        dialogBinding.cbIsTaxable.isChecked = shipment.isTaxable
-        if (shipment.discountAmount > 0) dialogBinding.etDiscountAmount.setText(shipment.discountAmount.toString())
-        if (shipment.overrideTotal != null) dialogBinding.etFinalPriceOverride.setText(shipment.overrideTotal.toString())
 
         dialogBinding.btnUploadProofPhoto.text = "📸 Snap / Upload Proof Photo (${shipment.deliveryPhotos?.size ?: 0} Attached)"
 
         val deliveredQtyInputs = mutableMapOf<OrderItem, EditText>()
         var currentItemsList = mutableListOf<OrderItem>()
-
-        fun calculateAdjustedTotal(): Double {
-            var subtotal = 0.0
-            for ((item, inputField) in deliveredQtyInputs) {
-                val actualQty = inputField.text.toString().toIntOrNull() ?: item.quantity
-                subtotal += (actualQty * item.unitPrice)
-            }
-            val isTaxable = dialogBinding.cbIsTaxable.isChecked
-            val deliveryFee = if (subtotal > 0) 50.0 else 0.0
-            val tax = if (isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
-            val discount = dialogBinding.etDiscountAmount.text.toString().toDoubleOrNull() ?: 0.0
-            val overridePrice = dialogBinding.etFinalPriceOverride.text.toString().toDoubleOrNull()
-
-            val calculated = Math.max(0.0, subtotal + deliveryFee + tax - discount)
-            val finalTotal = if (overridePrice != null && overridePrice > 0) overridePrice else calculated
-
-            val taxLabel = if (isTaxable) "Tax (8%): $" + String.format(Locale.US, "%.2f", tax) else "Tax: $0.00 (TAX EXEMPT)"
-
-            dialogBinding.tvAdjustedTotalPreview.text = "💰 Adjusted Total: $" + String.format(Locale.US, "%.2f", finalTotal) +
-                " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) +
-                " + Delivery Fee: $" + String.format(Locale.US, "%.2f", deliveryFee) +
-                " + $taxLabel - Disc: $" + String.format(Locale.US, "%.2f", discount) + ")"
-
-            return finalTotal
-        }
 
         // Fetch Customer & Order details safely
         lifecycleScope.launch {
@@ -288,43 +344,52 @@ class DeliveriesFragment : Fragment() {
 
                 val customersList = if (custResponse.isSuccessful && custResponse.body() != null) custResponse.body()!! else emptyList()
 
-                if (salesResponse.isSuccessful && salesResponse.body() != null) {
-                    val matchingOrder = salesResponse.body()!!.find {
-                        it.id.equals(targetOrderId, ignoreCase = true) || it.id.equals(shipId, ignoreCase = true)
+                val rawOrders = if (salesResponse.isSuccessful && salesResponse.body() != null) salesResponse.body()!! else emptyList()
+                val mergedOrders = getMergedOrders(rawOrders)
+
+                val matchingOrder = mergedOrders.find {
+                    it.id.equals(targetOrderId, ignoreCase = true) || it.id.equals(shipId, ignoreCase = true)
+                }
+
+                if (matchingOrder != null) {
+                    val matchingCustomer = customersList.find {
+                        it.id == matchingOrder.customerId || it.email.equals(matchingOrder.customerEmail, true)
                     }
-                    if (matchingOrder != null) {
-                        val matchingCustomer = customersList.find {
-                            it.id == matchingOrder.customerId || it.email.equals(matchingOrder.customerEmail, true)
-                        }
 
-                        val isCustomerTaxable = matchingCustomer?.isTaxable ?: (matchingOrder.tax > 0 || matchingOrder.isTaxable)
-                        dialogBinding.cbIsTaxable.isChecked = isCustomerTaxable
+                    val companyStr = if (!matchingOrder.customerCompany.isNullOrEmpty()) " (${matchingOrder.customerCompany})" else ""
+                    val custName = matchingOrder.customerName.orEmpty().ifEmpty { "Direct Client" }
+                    val custPhone = matchingOrder.customerPhone.orEmpty().ifEmpty { "(279) 261-3890" }
+                    val custEmail = matchingOrder.customerEmail.orEmpty().ifEmpty { "sales@secureafence.com" }
 
-                        val companyStr = if (!matchingOrder.customerCompany.isNullOrEmpty()) " (${matchingOrder.customerCompany})" else ""
-                        val custName = matchingOrder.customerName.ifEmpty { "Direct Client" }
-                        val custPhone = matchingOrder.customerPhone.ifEmpty { "(279) 261-3890" }
-                        val custEmail = matchingOrder.customerEmail.ifEmpty { "sales@secureafence.com" }
+                    dialogBinding.tvCustomerNameAndCompany.text = "Client: $custName$companyStr"
+                    dialogBinding.tvCustomerPhoneAndEmail.text = "Phone: $custPhone | Email: $custEmail"
 
-                        dialogBinding.tvCustomerNameAndCompany.text = "Client: $custName$companyStr"
-                        dialogBinding.tvCustomerPhoneAndEmail.text = "Phone: $custPhone | Email: $custEmail"
-
-                        dialogBinding.btnCallCustomer.setOnClickListener {
-                            val phoneIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$custPhone"))
-                            startActivity(phoneIntent)
-                        }
-
-                        if (!matchingOrder.items.isNullOrEmpty()) {
-                            currentItemsList = matchingOrder.items.toMutableList()
-                        }
+                    dialogBinding.btnCallCustomer.setOnClickListener {
+                        val phoneIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$custPhone"))
+                        startActivity(phoneIntent)
                     }
+
+                    if (!matchingOrder.items.isNullOrEmpty()) {
+                        currentItemsList = matchingOrder.items.toMutableList()
+                    }
+
+                    val subtotal = matchingOrder.subtotal
+                    val deliveryFee = matchingOrder.deliveryFee
+                    val tax = matchingOrder.tax
+                    val discount = matchingOrder.discountAmount
+                    val total = matchingOrder.totalAmount
+                    val taxLabel = if (matchingOrder.isTaxable) "Tax (8%): $" + String.format(Locale.US, "%.2f", tax) else "Tax: $0.00 (EXEMPT)"
+
+                    dialogBinding.tvAdjustedTotalPreview.text = "💰 Order Financial Total: $" + String.format(Locale.US, "%.2f", total) +
+                        "\n(Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) +
+                        " + Delivery Transport: $" + String.format(Locale.US, "%.2f", deliveryFee) +
+                        " + $taxLabel - Discount: $" + String.format(Locale.US, "%.2f", discount) + ")"
+                } else {
+                    dialogBinding.tvAdjustedTotalPreview.text = "💰 Total Order Value: $" + String.format(Locale.US, "%.2f", shipment.overrideTotal ?: 0.0)
                 }
 
                 if (currentItemsList.isEmpty()) {
-                    currentItemsList = mutableListOf(
-                        OrderItem(productId = "prod-1", name = "Refurbished Temporary Fence Panel (6' x 12')", unitPrice = 65.0, quantity = 50, deliveredQuantity = 50, total = 3250.0),
-                        OrderItem(productId = "prod-2", name = "Flat Base / Stand", unitPrice = 10.0, quantity = 50, deliveredQuantity = 50, total = 500.0),
-                        OrderItem(productId = "prod-3", name = "Safety Clamp / Panel Clip", unitPrice = 5.0, quantity = 50, deliveredQuantity = 50, total = 250.0)
-                    )
+                    currentItemsList = (shipment.deliveredItems ?: emptyList()).toMutableList()
                 }
 
                 dialogBinding.llDeliveredItemsContainer.removeAllViews()
@@ -347,7 +412,6 @@ class DeliveriesFragment : Fragment() {
                         setText((item.deliveredQuantity ?: item.quantity).toString())
                         inputType = InputType.TYPE_CLASS_NUMBER
                         isEnabled = false
-                        doAfterTextChanged { calculateAdjustedTotal() }
                     }
 
                     itemLayout.addView(tvLabel)
@@ -356,16 +420,10 @@ class DeliveriesFragment : Fragment() {
                     deliveredQtyInputs[item] = inputDeliveredQty
                 }
 
-                calculateAdjustedTotal()
-
             } catch (e: Exception) {
                 // Fallback
             }
         }
-
-        dialogBinding.cbIsTaxable.setOnCheckedChangeListener { _, _ -> calculateAdjustedTotal() }
-        dialogBinding.etDiscountAmount.doAfterTextChanged { calculateAdjustedTotal() }
-        dialogBinding.etFinalPriceOverride.doAfterTextChanged { calculateAdjustedTotal() }
 
         // Explicit "✏️ Edit" Button Toggle to prevent accidental edits
         var isEditingEnabled = false
@@ -378,10 +436,8 @@ class DeliveriesFragment : Fragment() {
             dialogBinding.spDeliveryStatus.isEnabled = enable
             dialogBinding.etEtaOrPickupTime.isEnabled = enable
             dialogBinding.etDeliveryNotes.isEnabled = enable
-            dialogBinding.cbIsTaxable.isEnabled = enable
-            dialogBinding.etDiscountAmount.isEnabled = enable
-            dialogBinding.etFinalPriceOverride.isEnabled = enable
             dialogBinding.btnSaveDeliveryChanges.isEnabled = enable
+            dialogBinding.btnUploadProofPhoto.isEnabled = enable
 
             for (inputField in deliveredQtyInputs.values) {
                 inputField.isEnabled = enable
@@ -417,6 +473,17 @@ class DeliveriesFragment : Fragment() {
                 item.copy(deliveredQuantity = qty, total = qty * item.unitPrice)
             }
 
+            val updatedShipment = shipment.copy(
+                driverName = updatedDriver,
+                dispatchDate = updatedDate,
+                destination = updatedDest,
+                status = selectedStatus,
+                eta = updatedEta,
+                notes = updatedNotes,
+                deliveredItems = updatedItems
+            )
+            saveLocalShipmentOverride(updatedShipment)
+
             val updateRequest = ShipmentUpdateRequest(
                 driverName = updatedDriver,
                 dispatchDate = updatedDate,
@@ -424,15 +491,15 @@ class DeliveriesFragment : Fragment() {
                 notes = updatedNotes,
                 status = selectedStatus,
                 eta = updatedEta,
-                deliveredItems = updatedItems,
-                isTaxable = dialogBinding.cbIsTaxable.isChecked,
-                discountAmount = dialogBinding.etDiscountAmount.text.toString().toDoubleOrNull() ?: 0.0,
-                overrideTotal = dialogBinding.etFinalPriceOverride.text.toString().toDoubleOrNull()
+                deliveredItems = updatedItems
             )
 
             lifecycleScope.launch {
                 try {
                     val resp = ApiClient.instance.updateShipment("Bearer $token", shipId, updateRequest)
+                    if (selectedStatus.equals("Delivered", true)) {
+                        ApiClient.instance.updateOrderStatus("Bearer $token", targetOrderId, StatusUpdateRequest(status = "Delivered"))
+                    }
                     if (resp.isSuccessful) {
                         Toast.makeText(context, "💾 Dispatch #$shipId updated!", Toast.LENGTH_SHORT).show()
                     }

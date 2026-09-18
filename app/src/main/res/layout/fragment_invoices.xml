@@ -29,21 +29,21 @@
             android:layout_marginBottom="16dp">
 
             <Button
-                android:id="@+id/btnCreateInvoice"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="➕ Create Invoice"
-                android:textSize="13sp"
-                android:layout_marginEnd="6dp"/>
-
-            <Button
                 android:id="@+id/btnPlaceOrder"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="🛒 Order Catalog"
-                android:textSize="13sp"/>
+                android:text="🛒 Place Order"
+                android:textSize="12sp"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/btnOpenPayments"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="💳 Payments"
+                android:textSize="12sp"/>
         </LinearLayout>
 
         <!-- Section 1: Sales Orders (Pending Delivery / Pickup) Header -->

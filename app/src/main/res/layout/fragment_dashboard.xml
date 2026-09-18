@@ -167,16 +167,10 @@
             android:text="Refresh Overview"/>
 
         <Button
-            android:id="@+id/btnCreateCustomer"
+            android:id="@+id/btnCalculator"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Create Customer Account"/>
-
-        <Button
-            android:id="@+id/btnManageCustomers"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Manage Customers"/>
+            android:text="Fence Quote Calculator"/>
 
         <Button
             android:id="@+id/btnManageProducts"

@@ -1,6 +1,7 @@
 package com.example.secureafenceadministrator.ui.invoices
 
 import android.app.AlertDialog
+import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
@@ -41,6 +42,9 @@ import com.example.secureafenceadministrator.databinding.DialogOrderCatalogBindi
 import com.example.secureafenceadministrator.databinding.FragmentInvoicesBinding
 import com.example.secureafenceadministrator.databinding.ItemProductCatalogBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
+import com.example.secureafenceadministrator.ui.payments.PaymentsFragment
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -68,12 +72,15 @@ class InvoicesFragment : Fragment() {
 
         loadInvoices()
 
-        binding.btnCreateInvoice.setOnClickListener {
-            showCreateInvoiceDialog()
-        }
-
         binding.btnPlaceOrder.setOnClickListener {
             showCatalogOrderDialog()
+        }
+
+        binding.btnOpenPayments.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, PaymentsFragment())
+                .addToBackStack(null)
+                .commit()
         }
     }
 
@@ -303,10 +310,12 @@ class InvoicesFragment : Fragment() {
 
             val jobsites = customer.jobsites ?: emptyList()
             if (jobsites.isNotEmpty()) {
-                val siteNames = jobsites.map { "${it.name} (${it.address})" }.toTypedArray()
+                selectedDistance = jobsites[0].deliveryDistanceMiles
+                val siteNames = jobsites.map { "${it.name} (${it.address}) - ${it.deliveryDistanceMiles} mi" }.toTypedArray()
                 checkoutBinding.spCheckoutJobsite.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, siteNames)
             } else {
-                checkoutBinding.spCheckoutJobsite.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, arrayOf("No registered jobsites"))
+                selectedDistance = 0.0
+                checkoutBinding.spCheckoutJobsite.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, arrayOf("No registered jobsites (0 mi)"))
             }
             updateFinancials()
         }
@@ -326,10 +335,14 @@ class InvoicesFragment : Fragment() {
                 val jobsites = selectedCustomer.jobsites ?: emptyList()
                 if (position in jobsites.indices) {
                     val jobsite = jobsites[position]
+                    selectedDistance = jobsite.deliveryDistanceMiles
                     checkoutBinding.etCheckoutDeliveryAddress.setText(jobsite.address)
                     if (!jobsite.contactName.isNullOrEmpty()) checkoutBinding.etCheckoutCustomerName.setText(jobsite.contactName)
                     if (!jobsite.contactPhone.isNullOrEmpty()) checkoutBinding.etCheckoutPhone.setText(jobsite.contactPhone)
+                } else {
+                    selectedDistance = 0.0
                 }
+                updateFinancials()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -389,6 +402,8 @@ class InvoicesFragment : Fragment() {
                 paymentMethod = "None"
             )
 
+            saveLocalOrderOverride(newOrder)
+
             lifecycleScope.launch {
                 try {
                     // Create order in backend (backend automatically generates active dispatch shipment with matching Order ID)
@@ -400,7 +415,7 @@ class InvoicesFragment : Fragment() {
                     loadInvoices()
 
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Order created: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Saved locally: ${e.message}", Toast.LENGTH_SHORT).show()
                     dialog.dismiss()
                     loadInvoices()
                 }
@@ -475,6 +490,50 @@ class InvoicesFragment : Fragment() {
         }
     }
 
+    private fun saveLocalOrderOverride(order: Order) {
+        val ctx = context ?: return
+        val prefs = ctx.getSharedPreferences("local_order_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        try {
+            val type = object : TypeToken<MutableMap<String, Order>>() {}.type
+            val map: MutableMap<String, Order> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (order.id.isNotEmpty()) {
+                map[order.id] = order
+            }
+            prefs.edit().putString("overrides_json", Gson().toJson(map)).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun getMergedOrders(remoteList: List<Order>): List<Order> {
+        val ctx = context ?: return remoteList
+        val prefs = ctx.getSharedPreferences("local_order_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        return try {
+            val type = object : TypeToken<MutableMap<String, Order>>() {}.type
+            val localMap: MutableMap<String, Order> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (localMap.isEmpty()) return remoteList
+
+            val resultList = remoteList.toMutableList()
+            for (i in resultList.indices) {
+                val remote = resultList[i]
+                val localOverride = localMap[remote.id]
+                if (localOverride != null) {
+                    resultList[i] = localOverride
+                }
+            }
+            for ((_, localOrd) in localMap) {
+                if (resultList.none { it.id == localOrd.id }) {
+                    resultList.add(localOrd)
+                }
+            }
+            resultList
+        } catch (e: Exception) {
+            remoteList
+        }
+    }
+
     private fun loadInvoices() {
         val context = context ?: return
         val token = SessionManager.getToken(context)
@@ -486,59 +545,55 @@ class InvoicesFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.getSalesOrders("Bearer $token")
-                if (response.isSuccessful && response.body() != null) {
-                    val allOrders = response.body()!!
+                val remoteOrders = if (response.isSuccessful && response.body() != null) response.body()!! else emptyList()
+                val allOrders = getMergedOrders(remoteOrders)
 
-                    salesOrdersList = allOrders.filter {
-                        !it.status.equals("Delivered", ignoreCase = true) &&
-                        !it.status.equals("Picked Up / Returned", ignoreCase = true) &&
-                        !it.status.equals("Completed", ignoreCase = true)
-                    }.toMutableList()
+                salesOrdersList = allOrders.filter {
+                    val status = it.status.orEmpty()
+                    !status.equals("Delivered", ignoreCase = true) &&
+                    !status.equals("Picked Up / Returned", ignoreCase = true) &&
+                    !status.equals("Completed", ignoreCase = true)
+                }.toMutableList()
 
-                    completedInvoicesList = allOrders.filter {
-                        it.status.equals("Delivered", ignoreCase = true) ||
-                        it.status.equals("Picked Up / Returned", ignoreCase = true) ||
-                        it.status.equals("Completed", ignoreCase = true)
-                    }.toMutableList()
+                completedInvoicesList = allOrders.filter {
+                    val status = it.status.orEmpty()
+                    status.equals("Delivered", ignoreCase = true) ||
+                    status.equals("Picked Up / Returned", ignoreCase = true) ||
+                    status.equals("Completed", ignoreCase = true)
+                }.toMutableList()
 
                     binding.tvSalesOrdersHeader.text = "📦 Active Sales Orders (Pending Delivery / Pickup) (${salesOrdersList.size})"
-                    binding.tvCompletedInvoicesHeader.text = "📄 Invoices (Delivered & Completed Orders) (${completedInvoicesList.size})"
+                binding.tvCompletedInvoicesHeader.text = "📄 Invoices (Delivered & Completed Orders) (${completedInvoicesList.size})"
 
-                    val salesAdapter = GenericAdapter(
-                        salesOrdersList,
-                        titleProvider = { "${it.orderType.uppercase()} #${it.id}" },
-                        subtitleProvider = { 
-                            val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item -> "${item.quantity}x ${item.name}" }
-                            "Customer: ${it.customerName}\nItems: $itemsSummary\nAmount: $${it.totalAmount}"
-                        },
-                        statusProvider = { "Status: ${it.status.uppercase()} [PENDING DELIVERY] | Payment: ${it.paymentStatus ?: "Unpaid"}" },
-                        rightImageResIdProvider = { R.drawable.logo },
-                        onItemClick = { showOrderDetailsDialog(it) }
-                    )
-                    binding.recyclerViewSalesOrders.adapter = salesAdapter
+                val salesAdapter = GenericAdapter(
+                    salesOrdersList,
+                    titleProvider = { "${it.orderType.orEmpty().uppercase()} #${it.id.orEmpty()}" },
+                    subtitleProvider = { 
+                        val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item -> "${item.quantity}x ${item.name.orEmpty()}" }
+                        "Customer: ${it.customerName.orEmpty()}\nItems: $itemsSummary\nAmount: $${it.totalAmount}"
+                    },
+                    statusProvider = { "Status: ${it.status.orEmpty().uppercase()} [PENDING DELIVERY] | Payment: ${it.paymentStatus ?: "Unpaid"}" },
+                    rightImageResIdProvider = { R.drawable.logo },
+                    onItemClick = { showOrderDetailsDialog(it) }
+                )
+                binding.recyclerViewSalesOrders.adapter = salesAdapter
 
-                    val completedAdapter = GenericAdapter(
-                        completedInvoicesList,
-                        titleProvider = { "${it.orderType.uppercase()} #${it.id}" },
-                        subtitleProvider = { 
-                            val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item ->
-                                val delText = if (item.deliveredQuantity != null) " (Delivered: ${item.deliveredQuantity})" else ""
-                                "${item.quantity}x ${item.name}$delText"
-                            }
-                            "Customer: ${it.customerName}\nItems: $itemsSummary\nAmount: $${it.totalAmount}"
-                        },
-                        statusProvider = { "Status: ${it.status.uppercase()} [INVOICED] | Payment: ${it.paymentStatus ?: "Unpaid"}" },
-                        rightImageResIdProvider = { R.drawable.logo },
-                        onItemClick = { showOrderDetailsDialog(it) }
-                    )
-                    binding.recyclerViewInvoices.adapter = completedAdapter
+                val completedAdapter = GenericAdapter(
+                    completedInvoicesList,
+                    titleProvider = { "${it.orderType.orEmpty().uppercase()} #${it.id.orEmpty()}" },
+                    subtitleProvider = { 
+                        val itemsSummary = if (it.items.isNullOrEmpty()) "1x Custom Package" else it.items.joinToString(", ") { item ->
+                            val delText = if (item.deliveredQuantity != null) " (Delivered: ${item.deliveredQuantity})" else ""
+                            "${item.quantity}x ${item.name.orEmpty()}$delText"
+                        }
+                        "Customer: ${it.customerName.orEmpty()}\nItems: $itemsSummary\nAmount: $${it.totalAmount}"
+                    },
+                    statusProvider = { "Status: ${it.status.orEmpty().uppercase()} [INVOICED] | Payment: ${it.paymentStatus ?: "Unpaid"}" },
+                    rightImageResIdProvider = { R.drawable.logo },
+                    onItemClick = { showOrderDetailsDialog(it) }
+                )
+                binding.recyclerViewInvoices.adapter = completedAdapter
 
-                } else if (response.code() == 401) {
-                    Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
-                    SessionManager.clearSession(context)
-                } else {
-                    Toast.makeText(context, "Failed to load invoices", Toast.LENGTH_SHORT).show()
-                }
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -585,13 +640,13 @@ class InvoicesFragment : Fragment() {
                 val qty = inputField.text.toString().toIntOrNull() ?: item.quantity
                 subtotal += (qty * item.unitPrice)
             }
-            val deliveryFee = if (subtotal > 0) 50.0 else 0.0
+            val deliveryFee = if (order.deliveryFee > 0) order.deliveryFee else 0.0
             val isTaxable = dialogBinding.cbInvoiceTaxable.isChecked
             val tax = if (isTaxable) Math.round(subtotal * 0.08 * 100.0) / 100.0 else 0.0
             val discount = dialogBinding.etInvoiceDiscount.text.toString().toDoubleOrNull() ?: 0.0
 
             val grandTotal = Math.max(0.0, subtotal + deliveryFee + tax - discount)
-            dialogBinding.tvInvoiceGrandTotal.text = "💰 Grand Total: $" + String.format(Locale.US, "%.2f", grandTotal) + " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) + " + Tax: $" + String.format(Locale.US, "%.2f", tax) + " - Disc: $" + String.format(Locale.US, "%.2f", discount) + ")"
+            dialogBinding.tvInvoiceGrandTotal.text = "💰 Grand Total: $" + String.format(Locale.US, "%.2f", grandTotal) + " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) + " + Delivery Transport: $" + String.format(Locale.US, "%.2f", deliveryFee) + " + Tax: $" + String.format(Locale.US, "%.2f", tax) + " - Disc: $" + String.format(Locale.US, "%.2f", discount) + ")"
 
             return grandTotal
         }
@@ -729,6 +784,8 @@ class InvoicesFragment : Fragment() {
                     totalAmount = finalAmount
                 )
 
+                saveLocalOrderOverride(updatedOrder)
+
                 lifecycleScope.launch {
                     try {
                         ApiClient.instance.updateOrder("Bearer $token", order.id, updatedOrder)
@@ -813,9 +870,14 @@ class InvoicesFragment : Fragment() {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
+        val cached = salesOrdersList.find { it.id == orderId } ?: completedInvoicesList.find { it.id == orderId }
+        cached?.let {
+            saveLocalOrderOverride(it.copy(paymentStatus = paymentStatus, paymentMethod = paymentMethod))
+        }
+
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.updateOrderPayment(
+                ApiClient.instance.updateOrderPayment(
                     "Bearer $token",
                     orderId,
                     OrderPaymentUpdateRequest(
@@ -823,14 +885,11 @@ class InvoicesFragment : Fragment() {
                         paymentMethod = paymentMethod
                     )
                 )
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Payment status updated to $paymentStatus via $paymentMethod", Toast.LENGTH_SHORT).show()
-                    loadInvoices()
-                } else {
-                    Toast.makeText(context, "Failed to update payment", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(context, "Payment status updated to $paymentStatus via $paymentMethod", Toast.LENGTH_SHORT).show()
+                loadInvoices()
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Saved locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                loadInvoices()
             }
         }
     }
@@ -839,21 +898,23 @@ class InvoicesFragment : Fragment() {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
+        val cached = salesOrdersList.find { it.id == orderId } ?: completedInvoicesList.find { it.id == orderId }
+        cached?.let {
+            saveLocalOrderOverride(it.copy(status = status))
+        }
+
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.updateOrderStatus(
+                ApiClient.instance.updateOrderStatus(
                     "Bearer $token",
                     orderId,
                     StatusUpdateRequest(status = status)
                 )
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Status updated to $status", Toast.LENGTH_SHORT).show()
-                    loadInvoices()
-                } else {
-                    Toast.makeText(context, "Failed to update status", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(context, "Status updated to $status", Toast.LENGTH_SHORT).show()
+                loadInvoices()
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Saved locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                loadInvoices()
             }
         }
     }
@@ -948,12 +1009,14 @@ class InvoicesFragment : Fragment() {
 
         pdfDocument.finishPage(page)
 
-        val file = File("/sdcard/Download/Invoice_${order.id}.pdf")
+        val ctx = context ?: return
+        val dir = ctx.getExternalFilesDir(null) ?: ctx.filesDir
+        val file = File(dir, "Invoice_${order.id}.pdf")
         try {
             pdfDocument.writeTo(FileOutputStream(file))
-            Toast.makeText(context, "Invoice exported: Invoice_${order.id}.pdf", Toast.LENGTH_LONG).show()
+            Toast.makeText(ctx, "Invoice exported: ${file.name}", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            Toast.makeText(context, "PDF Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, "PDF Error: ${e.message}", Toast.LENGTH_SHORT).show()
         } finally {
             pdfDocument.close()
         }

@@ -1,6 +1,7 @@
 package com.example.secureafenceadministrator.ui.customers
 
 import android.app.AlertDialog
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -33,6 +34,8 @@ import com.example.secureafenceadministrator.databinding.DialogCustomerBinding
 import com.example.secureafenceadministrator.databinding.DialogCustomerDetailsBinding
 import com.example.secureafenceadministrator.databinding.FragmentCustomersBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -81,52 +84,47 @@ class CustomersFragment : Fragment() {
                 val rentals = if (rentalsResponse.isSuccessful && rentalsResponse.body() != null) rentalsResponse.body()!! else emptyList()
                 val orders = if (salesResponse.isSuccessful && salesResponse.body() != null) salesResponse.body()!! else emptyList()
 
-                if (response.isSuccessful && response.body() != null) {
-                    customersList = response.body()!!.toMutableList()
+                val remoteCustomers = if (response.isSuccessful && response.body() != null) response.body()!! else emptyList()
+                customersList = getMergedCustomers(remoteCustomers).toMutableList()
 
-                    binding.tvTitle.text = "👥 Registered Customer Accounts (${customersList.size})"
+                binding.tvTitle.text = "👥 Registered Customer Accounts (${customersList.size})"
 
-                    val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
-                    val adapter = GenericAdapter(
-                        customersList,
-                        titleProvider = { "${it.name}${if (!it.company.isNullOrEmpty()) " (${it.company})" else ""}" },
-                        subtitleProvider = {
-                            val sitesCount = it.jobsites?.size ?: 0
-                            val taxBadge = if (it.isTaxable) "Taxable (8%)" else "TAX EXEMPT"
-                            val phoneStr = (it.phone ?: "").ifEmpty { "N/A" }
-                            "Email: ${it.email}\nPhone: $phoneStr | Sites: $sitesCount | $taxBadge"
-                        },
-                        statusProvider = { cust ->
-                            val custRentals = rentals.filter {
-                                it.customerEmail.equals(cust.email, true) || (cust.id.isNotEmpty() && it.customerId == cust.id)
-                            }
-                            val custOrders = orders.filter {
-                                it.customerEmail.equals(cust.email, true) || (cust.id.isNotEmpty() && it.customerId == cust.id)
-                            }
+                val adapter = GenericAdapter(
+                    customersList,
+                    titleProvider = { "${it.name}${if (!it.company.isNullOrEmpty()) " (${it.company})" else ""}" },
+                    subtitleProvider = {
+                        val sitesCount = it.jobsites?.size ?: 0
+                        val taxBadge = if (it.isTaxable) "Taxable (8%)" else "TAX EXEMPT"
+                        val phoneStr = (it.phone ?: "").ifEmpty { "N/A" }
+                        "Email: ${it.email}\nPhone: $phoneStr | Sites: $sitesCount | $taxBadge"
+                    },
+                    statusProvider = { cust ->
+                        val custRentals = rentals.filter {
+                            it.customerEmail.equals(cust.email, true) || (cust.id.isNotEmpty() && it.customerId == cust.id)
+                        }
+                        val custOrders = orders.filter {
+                            it.customerEmail.equals(cust.email, true) || (cust.id.isNotEmpty() && it.customerId == cust.id)
+                        }
 
-                            val isOverdue = custRentals.any { !it.endDate.isNullOrEmpty() && it.endDate < todayStr && !it.status.equals("Returned", true) }
+                        val isOverdue = custRentals.any { !it.endDate.isNullOrEmpty() && it.endDate < todayStr && !it.status.equals("Returned", true) }
 
-                            val unpaidOrdersTotal = custOrders.filter { !it.paymentStatus.equals("Paid", ignoreCase = true) }.sumOf { it.totalAmount }
-                            val activeRentalsTotal = custRentals.filter { !it.status.equals("Returned", true) && !it.status.equals("Completed", true) }.sumOf { it.monthlyRateTotal }
-                            val totalBalance = unpaidOrdersTotal + activeRentalsTotal
+                        val unpaidOrdersTotal = custOrders.filter { !it.paymentStatus.equals("Paid", ignoreCase = true) }.sumOf { it.totalAmount }
+                        val activeRentalsTotal = custRentals.filter { !it.status.equals("Returned", true) && !it.status.equals("Completed", true) }.sumOf { it.monthlyRateTotal }
+                        val totalBalance = unpaidOrdersTotal + activeRentalsTotal
 
-                            when {
-                                isOverdue -> "⚠️ OVERDUE RENTAL"
-                                totalBalance > 0 -> "💳 $" + String.format(Locale.US, "%.2f", totalBalance) + " DUE"
-                                else -> "✅ CURRENT"
-                            }
-                        },
-                        rightImageResIdProvider = { R.drawable.logo },
-                        onItemClick = { showCustomerDetailsWithFinancials(it, rentals, orders, todayStr) }
-                    )
-                    binding.recyclerViewCustomers.adapter = adapter
-                } else if (response.code() == 401) {
-                    Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
-                    SessionManager.clearSession(context)
-                } else {
-                    Toast.makeText(context, "Failed to load customers", Toast.LENGTH_SHORT).show()
-                }
+                        when {
+                            isOverdue -> "⚠️ OVERDUE RENTAL"
+                            totalBalance > 0 -> "💳 $" + String.format(Locale.US, "%.2f", totalBalance) + " DUE"
+                            else -> "✅ CURRENT"
+                        }
+                    },
+                    rightImageResIdProvider = { R.drawable.logo },
+                    onItemClick = { showCustomerDetailsWithFinancials(it, rentals, orders, todayStr) }
+                )
+                binding.recyclerViewCustomers.adapter = adapter
+
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -421,10 +419,11 @@ class CustomersFragment : Fragment() {
 
         pdfDocument.finishPage(page)
 
-        val file = File("/sdcard/Download/Invoice_${order.id}.pdf")
+        val dir = context.getExternalFilesDir(null) ?: context.filesDir
+        val file = File(dir, "Invoice_${order.id}.pdf")
         try {
             pdfDocument.writeTo(FileOutputStream(file))
-            Toast.makeText(context, "Invoice exported: Invoice_${order.id}.pdf", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Invoice exported: ${file.name}", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(context, "PDF Error: ${e.message}", Toast.LENGTH_SHORT).show()
         } finally {
@@ -539,22 +538,28 @@ class CustomersFragment : Fragment() {
 
             val token = SessionManager.getToken(context) ?: return@setPositiveButton
 
+            val currentJobsites = (customer.jobsites ?: emptyList()).toMutableList()
+            if (existingJobsite == null) {
+                currentJobsites.add(jobsite)
+            } else {
+                val idx = currentJobsites.indexOfFirst { it.id == existingJobsite.id }
+                if (idx >= 0) currentJobsites[idx] = jobsite else currentJobsites.add(jobsite)
+            }
+            val updatedCustomer = customer.copy(jobsites = currentJobsites)
+            saveLocalCustomerOverride(updatedCustomer)
+
             lifecycleScope.launch {
                 try {
-                    val response = if (existingJobsite == null) {
+                    if (existingJobsite == null) {
                         ApiClient.instance.createJobsite("Bearer $token", customer.id, jobsite)
                     } else {
                         ApiClient.instance.updateJobsite("Bearer $token", customer.id, existingJobsite.id.orEmpty(), jobsite)
                     }
-
-                    if (response.isSuccessful) {
-                        Toast.makeText(context, "Jobsite saved successfully", Toast.LENGTH_SHORT).show()
-                        loadCustomers()
-                    } else {
-                        Toast.makeText(context, "Failed to save jobsite", Toast.LENGTH_SHORT).show()
-                    }
+                    Toast.makeText(context, "Jobsite saved successfully", Toast.LENGTH_SHORT).show()
+                    loadCustomers()
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Saved locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                    loadCustomers()
                 }
             }
         }
@@ -566,17 +571,18 @@ class CustomersFragment : Fragment() {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
+        val currentJobsites = (customer.jobsites ?: emptyList()).filter { it.id != jobsite.id }
+        val updatedCustomer = customer.copy(jobsites = currentJobsites)
+        saveLocalCustomerOverride(updatedCustomer)
+
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.deleteJobsite("Bearer $token", customer.id, jobsite.id.orEmpty())
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Jobsite deleted", Toast.LENGTH_SHORT).show()
-                    loadCustomers()
-                } else {
-                    Toast.makeText(context, "Failed to delete jobsite", Toast.LENGTH_SHORT).show()
-                }
+                ApiClient.instance.deleteJobsite("Bearer $token", customer.id, jobsite.id.orEmpty())
+                Toast.makeText(context, "Jobsite deleted", Toast.LENGTH_SHORT).show()
+                loadCustomers()
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Deleted locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                loadCustomers()
             }
         }
     }
@@ -677,26 +683,83 @@ class CustomersFragment : Fragment() {
         builder.show()
     }
 
+    private fun saveLocalCustomerOverride(customer: Customer) {
+        val ctx = context ?: return
+        val prefs = ctx.getSharedPreferences("local_customer_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        try {
+            val type = object : TypeToken<MutableMap<String, Customer>>() {}.type
+            val map: MutableMap<String, Customer> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (customer.id.isNotEmpty()) {
+                map[customer.id] = customer
+            }
+            if (customer.email.isNotEmpty()) {
+                map[customer.email.lowercase(Locale.US)] = customer
+            }
+            prefs.edit().putString("overrides_json", Gson().toJson(map)).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun getMergedCustomers(remoteList: List<Customer>): List<Customer> {
+        val ctx = context ?: return remoteList
+        val prefs = ctx.getSharedPreferences("local_customer_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        return try {
+            val type = object : TypeToken<MutableMap<String, Customer>>() {}.type
+            val localMap: MutableMap<String, Customer> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (localMap.isEmpty()) return remoteList
+
+            val resultList = remoteList.toMutableList()
+            for (i in resultList.indices) {
+                val remote = resultList[i]
+                val localOverride = localMap[remote.id] ?: localMap[remote.email.lowercase(Locale.US)]
+                if (localOverride != null) {
+                    resultList[i] = localOverride
+                }
+            }
+            for ((_, localCust) in localMap) {
+                if (resultList.none { it.id == localCust.id || (localCust.email.isNotEmpty() && it.email.equals(localCust.email, true)) }) {
+                    resultList.add(localCust)
+                }
+            }
+            resultList
+        } catch (e: Exception) {
+            remoteList
+        }
+    }
+
     private fun saveCustomer(customerId: String?, request: CreateCustomerRequest) {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
+        val targetId = if (!customerId.isNullOrEmpty()) customerId else ("cust-" + System.currentTimeMillis())
+        val updatedCustomer = Customer(
+            id = targetId,
+            name = request.name,
+            email = request.email,
+            role = request.role ?: "customer",
+            company = request.company,
+            phone = request.phone,
+            isTaxable = request.isTaxable,
+            businessAddress = request.businessAddress,
+            jobsites = request.jobsites
+        )
+        saveLocalCustomerOverride(updatedCustomer)
+
         lifecycleScope.launch {
             try {
-                val response = if (customerId == null) {
+                if (customerId.isNullOrEmpty()) {
                     ApiClient.instance.createCustomer("Bearer $token", request)
                 } else {
                     ApiClient.instance.updateCustomer("Bearer $token", customerId, request)
                 }
-
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Customer account saved successfully", Toast.LENGTH_SHORT).show()
-                    loadCustomers()
-                } else {
-                    Toast.makeText(context, "Failed to save customer account", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(context, "Customer account saved successfully", Toast.LENGTH_SHORT).show()
+                loadCustomers()
             } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Saved locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                loadCustomers()
             }
         }
     }

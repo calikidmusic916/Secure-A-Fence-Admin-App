@@ -1,5 +1,6 @@
 package com.example.secureafenceadministrator.ui.rentals
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -24,6 +25,8 @@ import com.example.secureafenceadministrator.data.network.SessionManager
 import com.example.secureafenceadministrator.databinding.DialogRentalDetailsBinding
 import com.example.secureafenceadministrator.databinding.FragmentRentalsBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.launch
 
 class RentalsFragment : Fragment() {
@@ -42,6 +45,50 @@ class RentalsFragment : Fragment() {
         loadRentals()
     }
 
+    private fun saveLocalRentalOverride(rental: Rental) {
+        val ctx = context ?: return
+        val prefs = ctx.getSharedPreferences("local_rental_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        try {
+            val type = object : TypeToken<MutableMap<String, Rental>>() {}.type
+            val map: MutableMap<String, Rental> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (rental.id.isNotEmpty()) {
+                map[rental.id] = rental
+            }
+            prefs.edit().putString("overrides_json", Gson().toJson(map)).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun getMergedRentals(remoteList: List<Rental>): List<Rental> {
+        val ctx = context ?: return remoteList
+        val prefs = ctx.getSharedPreferences("local_rental_overrides", Context.MODE_PRIVATE)
+        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
+        return try {
+            val type = object : TypeToken<MutableMap<String, Rental>>() {}.type
+            val localMap: MutableMap<String, Rental> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
+            if (localMap.isEmpty()) return remoteList
+
+            val resultList = remoteList.toMutableList()
+            for (i in resultList.indices) {
+                val remote = resultList[i]
+                val localOverride = localMap[remote.id]
+                if (localOverride != null) {
+                    resultList[i] = localOverride
+                }
+            }
+            for ((_, localRnt) in localMap) {
+                if (resultList.none { it.id == localRnt.id }) {
+                    resultList.add(localRnt)
+                }
+            }
+            resultList
+        } catch (e: Exception) {
+            remoteList
+        }
+    }
+
     private fun loadRentals() {
         val context = context ?: return
         val token = SessionManager.getToken(context)
@@ -53,26 +100,21 @@ class RentalsFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 val response = ApiClient.instance.getRentals("Bearer $token")
-                if (response.isSuccessful && response.body() != null) {
-                    val rentals = response.body()!!
-                    val adapter = GenericAdapter(
-                        rentals,
-                        titleProvider = { "Rental #${it.id}" },
-                        subtitleProvider = {
-                            val clientStr = if (it.customerCompany.isNotEmpty()) "${it.customerName} (${it.customerCompany})" else it.customerName
-                            "Client: $clientStr\nSite: ${it.jobsiteAddress}\nTerm: ${it.startDate} ➔ ${it.endDate}\nRate: $${it.monthlyRateTotal} / mo"
-                        },
-                        statusProvider = { "Status: ${it.status.uppercase()}" },
-                        rightImageResIdProvider = { R.drawable.logo },
-                        onItemClick = { showRentalDetailsModal(it) }
-                    )
-                    binding.recyclerViewRentals.adapter = adapter
-                } else if (response.code() == 401 || response.code() == 403) {
-                    Toast.makeText(context, "Session expired, please log in again", Toast.LENGTH_SHORT).show()
-                    SessionManager.clearSession(context)
-                } else {
-                    Toast.makeText(context, "Failed to load rentals", Toast.LENGTH_SHORT).show()
-                }
+                val remoteRentals = if (response.isSuccessful && response.body() != null) response.body()!! else emptyList()
+                val rentals = getMergedRentals(remoteRentals)
+
+                val adapter = GenericAdapter(
+                    rentals,
+                    titleProvider = { "Rental #${it.id}" },
+                    subtitleProvider = {
+                        val clientStr = if (it.customerCompany.isNotEmpty()) "${it.customerName} (${it.customerCompany})" else it.customerName
+                        "Client: $clientStr\nSite: ${it.jobsiteAddress}\nTerm: ${it.startDate} ➔ ${it.endDate}\nRate: $${it.monthlyRateTotal} / mo"
+                    },
+                    statusProvider = { "Status: ${it.status.uppercase()}" },
+                    rightImageResIdProvider = { R.drawable.logo },
+                    onItemClick = { showRentalDetailsModal(it) }
+                )
+                binding.recyclerViewRentals.adapter = adapter
             } catch (e: Exception) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -186,6 +228,8 @@ class RentalsFragment : Fragment() {
     private fun saveRentalChanges(originalRental: Rental, updatedRental: Rental) {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
+
+        saveLocalRentalOverride(updatedRental)
 
         lifecycleScope.launch {
             try {

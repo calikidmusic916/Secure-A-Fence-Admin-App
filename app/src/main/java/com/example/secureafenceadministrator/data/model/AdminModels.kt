@@ -1,5 +1,7 @@
 package com.example.secureafenceadministrator.data.model
 
+import com.google.gson.annotations.SerializedName
+
 data class LoginRequest(
     val email: String,
     val password: String
@@ -9,13 +11,25 @@ data class LoginResponse(
     val token: String? = null,
     val accessToken: String? = null,
     val jwt: String? = null,
-    val user: User? = null
+    val user: User? = null,
+    val data: Map<String, Any>? = null
 ) {
-    fun fetchToken(): String? = token ?: accessToken ?: jwt
+    fun fetchToken(): String? {
+        if (!token.isNullOrEmpty()) return token
+        if (!accessToken.isNullOrEmpty()) return accessToken
+        if (!jwt.isNullOrEmpty()) return jwt
+        if (data != null) {
+            val t = data["token"] as? String
+                ?: data["accessToken"] as? String
+                ?: data["jwt"] as? String
+            if (!t.isNullOrEmpty()) return t
+        }
+        return null
+    }
 }
 
 data class User(
-    val id: String = "",
+    @SerializedName("id", alternate = ["_id", "userId"]) val id: String = "",
     val name: String = "",
     val email: String = "",
     val role: String = "admin",
@@ -38,7 +52,7 @@ data class Metrics(
 )
 
 data class OrderItem(
-    val productId: String = "",
+    @SerializedName("productId", alternate = ["id", "_id"]) val productId: String = "",
     val name: String = "",
     val unitPrice: Double = 0.0,
     val quantity: Int = 0,
@@ -47,8 +61,8 @@ data class OrderItem(
 )
 
 data class Order(
-    val id: String = "",
-    val customerId: String = "",
+    @SerializedName("id", alternate = ["_id", "orderId"]) val id: String = "",
+    @SerializedName("customerId", alternate = ["customer_id"]) val customerId: String = "",
     val customerName: String = "",
     val customerCompany: String = "",
     val customerEmail: String = "",
@@ -78,7 +92,7 @@ data class OrderPaymentUpdateRequest(
 )
 
 data class RentalItem(
-    val productId: String = "",
+    @SerializedName("productId", alternate = ["id", "_id"]) val productId: String = "",
     val name: String = "",
     val quantity: Int = 0,
     val monthlyUnitPrice: Double = 0.0,
@@ -86,7 +100,7 @@ data class RentalItem(
 )
 
 data class Rental(
-    val id: String = "",
+    @SerializedName("id", alternate = ["_id", "rentalId"]) val id: String = "",
     val orderId: String = "",
     val customerId: String = "",
     val customerName: String = "",
@@ -104,7 +118,7 @@ data class Rental(
 )
 
 data class Shipment(
-    val id: String = "",
+    @SerializedName("id", alternate = ["_id", "shipmentId"]) val id: String = "",
     val orderId: String = "",
     val type: String = "",
     val driverName: String = "",
@@ -151,7 +165,7 @@ data class SchedulePickupRequest(
 )
 
 data class Invoice(
-    val id: String = "",
+    @SerializedName("id", alternate = ["_id", "invoiceId"]) val id: String = "",
     val orderId: String = "",
     val customerName: String = "",
     val amount: Double = 0.0,
@@ -167,7 +181,7 @@ data class CreateInvoiceRequest(
 )
 
 data class Jobsite(
-    val id: String? = null,
+    @SerializedName("id", alternate = ["_id", "jobsiteId"]) val id: String? = null,
     val name: String = "",
     val address: String = "",
     val contactName: String? = null,
@@ -178,7 +192,7 @@ data class Jobsite(
 )
 
 data class Customer(
-    val id: String = "",
+    @SerializedName("id", alternate = ["_id", "customerId"]) val id: String = "",
     val name: String = "",
     val email: String = "",
     val role: String = "customer",
@@ -202,7 +216,7 @@ data class CreateCustomerRequest(
 )
 
 data class Product(
-    val id: String? = null,
+    @SerializedName("id", alternate = ["_id", "productId"]) val id: String? = null,
     val name: String = "",
     val category: String = "sales",
     val type: String = "panel",
@@ -216,4 +230,56 @@ data class Product(
     val suspended: Boolean = false,
     val isRental: Boolean = true,
     val isPurchase: Boolean = true
+)
+
+// --- STRIPE PAYMENT & INVOICING MODELS ---
+
+data class StripePaymentIntentRequest(
+    val amountCents: Long,
+    val currency: String = "usd",
+    val customerEmail: String = "",
+    val description: String = "",
+    val orderId: String? = null,
+    val isRentalCharge: Boolean = false,
+    val isTaxCalculated: Boolean = true
+)
+
+data class StripePaymentIntentResponse(
+    val clientSecret: String = "",
+    val paymentIntentId: String = "",
+    val status: String = "requires_payment_method",
+    val amount: Double = 0.0,
+    val currency: String = "usd"
+)
+
+data class StripeDirectChargeRequest(
+    val orderId: String? = null,
+    val customerEmail: String = "",
+    val customerName: String = "",
+    val amount: Double,
+    val description: String = "",
+    val paymentToken: String = "",
+    val paymentMethodId: String? = null
+)
+
+data class StripeInvoiceRequest(
+    val orderId: String,
+    val customerEmail: String,
+    val amount: Double,
+    val description: String = "Temporary Fence Rental/Sale Invoice",
+    val daysUntilDue: Int = 30
+)
+
+data class StripeTransactionRecord(
+    @SerializedName("id", alternate = ["_id", "transactionId"]) val id: String = "",
+    val orderId: String = "",
+    val customerName: String = "",
+    val customerEmail: String = "",
+    val amount: Double = 0.0,
+    val taxAmount: Double = 0.0,
+    val status: String = "SUCCEEDED",
+    val paymentMethodType: String = "card",
+    val timestamp: String = "",
+    val receiptUrl: String? = null,
+    val isTerminalTransaction: Boolean = false
 )
