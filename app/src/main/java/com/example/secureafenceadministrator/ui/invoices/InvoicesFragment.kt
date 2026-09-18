@@ -515,20 +515,16 @@ class InvoicesFragment : Fragment() {
             val localMap: MutableMap<String, Order> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
             if (localMap.isEmpty()) return remoteList
 
-            val resultList = remoteList.toMutableList()
-            for (i in resultList.indices) {
-                val remote = resultList[i]
-                val localOverride = localMap[remote.id]
-                if (localOverride != null) {
-                    resultList[i] = localOverride
-                }
+            val mergedMap = mutableMapOf<String, Order>()
+            for (o in remoteList) {
+                if (o.id.isNotEmpty()) mergedMap[o.id] = o
             }
             for ((_, localOrd) in localMap) {
-                if (resultList.none { it.id == localOrd.id }) {
-                    resultList.add(localOrd)
+                if (localOrd.id.isNotEmpty() && localOrd.customerName.isNotEmpty()) {
+                    mergedMap[localOrd.id] = localOrd
                 }
             }
-            resultList
+            mergedMap.values.toList()
         } catch (e: Exception) {
             remoteList
         }

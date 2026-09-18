@@ -690,12 +690,23 @@ class CustomersFragment : Fragment() {
         try {
             val type = object : TypeToken<MutableMap<String, Customer>>() {}.type
             val map: MutableMap<String, Customer> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
-            if (customer.id.isNotEmpty()) {
-                map[customer.id] = customer
+
+            // Remove any old entries matching this customer (by ID or Email) to prevent stale duplicates
+            val keysToRemove = map.filter { (k, c) ->
+                (customer.id.isNotEmpty() && c.id == customer.id) ||
+                (customer.email.isNotEmpty() && c.email.equals(customer.email, ignoreCase = true)) ||
+                k == customer.id || k.equals(customer.email, ignoreCase = true)
+            }.keys.toList()
+
+            for (k in keysToRemove) {
+                map.remove(k)
             }
-            if (customer.email.isNotEmpty()) {
-                map[customer.email.lowercase(Locale.US)] = customer
+
+            val primaryKey = customer.id.ifEmpty { customer.email.lowercase(Locale.US) }
+            if (primaryKey.isNotEmpty()) {
+                map[primaryKey] = customer
             }
+
             prefs.edit().putString("overrides_json", Gson().toJson(map)).apply()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -711,20 +722,27 @@ class CustomersFragment : Fragment() {
             val localMap: MutableMap<String, Customer> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
             if (localMap.isEmpty()) return remoteList
 
-            val resultList = remoteList.toMutableList()
-            for (i in resultList.indices) {
-                val remote = resultList[i]
-                val localOverride = localMap[remote.id] ?: localMap[remote.email.lowercase(Locale.US)]
-                if (localOverride != null) {
-                    resultList[i] = localOverride
-                }
+            val mergedMap = mutableMapOf<String, Customer>()
+            for (c in remoteList) {
+                val key = if (c.id.isNotEmpty()) c.id else c.email.lowercase(Locale.US)
+                if (key.isNotEmpty()) mergedMap[key] = c
             }
+
             for ((_, localCust) in localMap) {
-                if (resultList.none { it.id == localCust.id || (localCust.email.isNotEmpty() && it.email.equals(localCust.email, true)) }) {
-                    resultList.add(localCust)
+                if (localCust.name.isNotEmpty() && localCust.email.isNotEmpty()) {
+                    val existingKey = mergedMap.keys.find {
+                        val existingCust = mergedMap[it]
+                        (localCust.id.isNotEmpty() && (it == localCust.id || existingCust?.id == localCust.id)) ||
+                        (localCust.email.isNotEmpty() && (it.equals(localCust.email, true) || existingCust?.email?.equals(localCust.email, true) == true))
+                    }
+                    if (existingKey != null) {
+                        mergedMap[existingKey] = localCust
+                    } else {
+                        mergedMap[localCust.id.ifEmpty { localCust.email.lowercase(Locale.US) }] = localCust
+                    }
                 }
             }
-            resultList
+            mergedMap.values.toList()
         } catch (e: Exception) {
             remoteList
         }
