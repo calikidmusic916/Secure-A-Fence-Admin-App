@@ -84,8 +84,7 @@ class CustomersFragment : Fragment() {
                 val rentals = if (rentalsResponse.isSuccessful && rentalsResponse.body() != null) rentalsResponse.body()!! else emptyList()
                 val orders = if (salesResponse.isSuccessful && salesResponse.body() != null) salesResponse.body()!! else emptyList()
 
-                val remoteCustomers = if (response.isSuccessful && response.body() != null) response.body()!! else emptyList()
-                customersList = getMergedCustomers(remoteCustomers).toMutableList()
+                customersList = if (response.isSuccessful && response.body() != null) response.body()!!.toMutableList() else mutableListOf()
 
                 binding.tvTitle.text = "👥 Registered Customer Accounts (${customersList.size})"
 
@@ -538,27 +537,21 @@ class CustomersFragment : Fragment() {
 
             val token = SessionManager.getToken(context) ?: return@setPositiveButton
 
-            val currentJobsites = (customer.jobsites ?: emptyList()).toMutableList()
-            if (existingJobsite == null) {
-                currentJobsites.add(jobsite)
-            } else {
-                val idx = currentJobsites.indexOfFirst { it.id == existingJobsite.id }
-                if (idx >= 0) currentJobsites[idx] = jobsite else currentJobsites.add(jobsite)
-            }
-            val updatedCustomer = customer.copy(jobsites = currentJobsites)
-            saveLocalCustomerOverride(updatedCustomer)
-
             lifecycleScope.launch {
                 try {
-                    if (existingJobsite == null) {
+                    val response = if (existingJobsite == null) {
                         ApiClient.instance.createJobsite("Bearer $token", customer.id, jobsite)
                     } else {
                         ApiClient.instance.updateJobsite("Bearer $token", customer.id, existingJobsite.id.orEmpty(), jobsite)
                     }
-                    Toast.makeText(context, "Jobsite saved successfully", Toast.LENGTH_SHORT).show()
+                    if (response.isSuccessful) {
+                        Toast.makeText(context, "Jobsite saved successfully", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to save jobsite", Toast.LENGTH_SHORT).show()
+                    }
                     loadCustomers()
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Saved locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                     loadCustomers()
                 }
             }
@@ -571,17 +564,17 @@ class CustomersFragment : Fragment() {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
-        val currentJobsites = (customer.jobsites ?: emptyList()).filter { it.id != jobsite.id }
-        val updatedCustomer = customer.copy(jobsites = currentJobsites)
-        saveLocalCustomerOverride(updatedCustomer)
-
         lifecycleScope.launch {
             try {
-                ApiClient.instance.deleteJobsite("Bearer $token", customer.id, jobsite.id.orEmpty())
-                Toast.makeText(context, "Jobsite deleted", Toast.LENGTH_SHORT).show()
+                val response = ApiClient.instance.deleteJobsite("Bearer $token", customer.id, jobsite.id.orEmpty())
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Jobsite deleted", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to delete jobsite", Toast.LENGTH_SHORT).show()
+                }
                 loadCustomers()
             } catch (e: Exception) {
-                Toast.makeText(context, "Deleted locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 loadCustomers()
             }
         }
@@ -683,100 +676,26 @@ class CustomersFragment : Fragment() {
         builder.show()
     }
 
-    private fun saveLocalCustomerOverride(customer: Customer) {
-        val ctx = context ?: return
-        val prefs = ctx.getSharedPreferences("local_customer_overrides", Context.MODE_PRIVATE)
-        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
-        try {
-            val type = object : TypeToken<MutableMap<String, Customer>>() {}.type
-            val map: MutableMap<String, Customer> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
-
-            // Remove any old entries matching this customer (by ID or Email) to prevent stale duplicates
-            val keysToRemove = map.filter { (k, c) ->
-                (customer.id.isNotEmpty() && c.id == customer.id) ||
-                (customer.email.isNotEmpty() && c.email.equals(customer.email, ignoreCase = true)) ||
-                k == customer.id || k.equals(customer.email, ignoreCase = true)
-            }.keys.toList()
-
-            for (k in keysToRemove) {
-                map.remove(k)
-            }
-
-            val primaryKey = customer.id.ifEmpty { customer.email.lowercase(Locale.US) }
-            if (primaryKey.isNotEmpty()) {
-                map[primaryKey] = customer
-            }
-
-            prefs.edit().putString("overrides_json", Gson().toJson(map)).apply()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun getMergedCustomers(remoteList: List<Customer>): List<Customer> {
-        val ctx = context ?: return remoteList
-        val prefs = ctx.getSharedPreferences("local_customer_overrides", Context.MODE_PRIVATE)
-        val jsonMapString = prefs.getString("overrides_json", "{}") ?: "{}"
-        return try {
-            val type = object : TypeToken<MutableMap<String, Customer>>() {}.type
-            val localMap: MutableMap<String, Customer> = Gson().fromJson(jsonMapString, type) ?: mutableMapOf()
-            if (localMap.isEmpty()) return remoteList
-
-            val mergedMap = mutableMapOf<String, Customer>()
-            for (c in remoteList) {
-                val key = if (c.id.isNotEmpty()) c.id else c.email.lowercase(Locale.US)
-                if (key.isNotEmpty()) mergedMap[key] = c
-            }
-
-            for ((_, localCust) in localMap) {
-                if (localCust.name.isNotEmpty() && localCust.email.isNotEmpty()) {
-                    val existingKey = mergedMap.keys.find {
-                        val existingCust = mergedMap[it]
-                        (localCust.id.isNotEmpty() && (it == localCust.id || existingCust?.id == localCust.id)) ||
-                        (localCust.email.isNotEmpty() && (it.equals(localCust.email, true) || existingCust?.email?.equals(localCust.email, true) == true))
-                    }
-                    if (existingKey != null) {
-                        mergedMap[existingKey] = localCust
-                    } else {
-                        mergedMap[localCust.id.ifEmpty { localCust.email.lowercase(Locale.US) }] = localCust
-                    }
-                }
-            }
-            mergedMap.values.toList()
-        } catch (e: Exception) {
-            remoteList
-        }
-    }
-
     private fun saveCustomer(customerId: String?, request: CreateCustomerRequest) {
         val context = context ?: return
         val token = SessionManager.getToken(context) ?: return
 
-        val targetId = if (!customerId.isNullOrEmpty()) customerId else ("cust-" + System.currentTimeMillis())
-        val updatedCustomer = Customer(
-            id = targetId,
-            name = request.name,
-            email = request.email,
-            role = request.role ?: "customer",
-            company = request.company,
-            phone = request.phone,
-            isTaxable = request.isTaxable,
-            businessAddress = request.businessAddress,
-            jobsites = request.jobsites
-        )
-        saveLocalCustomerOverride(updatedCustomer)
-
         lifecycleScope.launch {
             try {
-                if (customerId.isNullOrEmpty()) {
+                val response = if (customerId.isNullOrEmpty()) {
                     ApiClient.instance.createCustomer("Bearer $token", request)
                 } else {
                     ApiClient.instance.updateCustomer("Bearer $token", customerId, request)
                 }
-                Toast.makeText(context, "Customer account saved successfully", Toast.LENGTH_SHORT).show()
+
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Customer account saved successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to save customer account", Toast.LENGTH_SHORT).show()
+                }
                 loadCustomers()
             } catch (e: Exception) {
-                Toast.makeText(context, "Saved locally: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 loadCustomers()
             }
         }
