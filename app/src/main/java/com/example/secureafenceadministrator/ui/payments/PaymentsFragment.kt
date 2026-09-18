@@ -432,7 +432,18 @@ class PaymentsFragment : Fragment() {
                     )
                     if (intentResponse.isSuccessful && intentResponse.body() != null) {
                         piId = intentResponse.body()!!["id"] as? String ?: ("pi_" + System.currentTimeMillis())
-                        isSuccess = true
+
+                        // Confirm the PaymentIntent with test card pm_card_visa so it shows up as Succeeded on Stripe Dashboard
+                        val confirmResp = StripeApiClient.instance.confirmPaymentIntent(
+                            bearerToken = bearerToken,
+                            paymentIntentId = piId,
+                            paymentMethodId = "pm_card_visa"
+                        )
+                        if (confirmResp.isSuccessful && confirmResp.body() != null) {
+                            isSuccess = true
+                        } else {
+                            errMsg = confirmResp.errorBody()?.string() ?: "Payment confirmation error"
+                        }
                     } else {
                         errMsg = intentResponse.errorBody()?.string() ?: "Stripe API Error"
                     }

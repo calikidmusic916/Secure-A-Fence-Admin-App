@@ -14,6 +14,7 @@ interface StripeApiService {
         @Field("description") description: String,
         @Field("receipt_email") receiptEmail: String?,
         @Field("metadata[order_id]") orderId: String,
+        @Field("payment_method_types[0]") paymentMethodType: String = "card",
         @Field("metadata[business]") businessName: String = "Secure-A-Fence Rentals & Sales"
     ): Response<Map<String, Any>>
 
