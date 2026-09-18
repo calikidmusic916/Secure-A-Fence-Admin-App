@@ -65,7 +65,10 @@ data class Order(
     val deliveryDate: String = "",
     val createdAt: String = "",
     val paymentStatus: String? = "Unpaid",
-    val paymentMethod: String? = "None"
+    val paymentMethod: String? = "None",
+    val isTaxable: Boolean = true,
+    val discountAmount: Double = 0.0,
+    val overrideTotal: Double? = null
 )
 
 data class OrderPaymentUpdateRequest(

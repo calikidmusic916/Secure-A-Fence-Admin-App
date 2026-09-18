@@ -22,7 +22,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.secureafenceadministrator.R
 import com.example.secureafenceadministrator.data.model.Order
 import com.example.secureafenceadministrator.data.model.OrderItem
-import com.example.secureafenceadministrator.data.model.SchedulePickupRequest
 import com.example.secureafenceadministrator.data.model.Shipment
 import com.example.secureafenceadministrator.data.model.ShipmentUpdateRequest
 import com.example.secureafenceadministrator.data.model.StatusUpdateRequest
@@ -32,6 +31,8 @@ import com.example.secureafenceadministrator.databinding.DialogDeliveryDetailsBi
 import com.example.secureafenceadministrator.databinding.FragmentDeliveriesBinding
 import com.example.secureafenceadministrator.ui.common.GenericAdapter
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class DeliveriesFragment : Fragment() {
@@ -69,94 +70,83 @@ class DeliveriesFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
-                val response = ApiClient.instance.getShipments("Bearer $token")
-                if (response.isSuccessful && !response.body().isNullOrEmpty()) {
-                    val allShipments = response.body()!!
-
-                    activeShipmentsList = allShipments.filter {
-                        val status = (it.status ?: "").trim()
-                        !status.equals("Delivered", ignoreCase = true) &&
-                        !status.equals("Picked Up / Returned", ignoreCase = true) &&
-                        !status.equals("Completed", ignoreCase = true) &&
-                        !status.equals("Cancelled", ignoreCase = true)
-                    }.toMutableList()
-
-                    completedShipmentsList = allShipments.filter {
-                        val status = (it.status ?: "").trim()
-                        status.equals("Delivered", ignoreCase = true) ||
-                        status.equals("Picked Up / Returned", ignoreCase = true) ||
-                        status.equals("Completed", ignoreCase = true)
-                    }.toMutableList()
-
-                    binding.tvActiveDeliveriesHeader.text = "🚚 Active Dispatches & Deliveries (${activeShipmentsList.size})"
-                    binding.tvCompletedDeliveriesHeader.text = "✅ Completed Dispatches (${completedShipmentsList.size})"
-
-                    setupActiveAdapter()
-                    setupCompletedAdapter()
-
-                } else if (response.code() == 401) {
-                    Toast.makeText(context, "Session expired, please login again", Toast.LENGTH_SHORT).show()
-                    SessionManager.clearSession(context)
-                } else {
-                    loadDispatchesFromOrdersFallback(token)
-                }
-            } catch (e: Exception) {
-                loadDispatchesFromOrdersFallback(token)
-            }
-        }
-    }
-
-    private fun loadDispatchesFromOrdersFallback(token: String) {
-        lifecycleScope.launch {
-            try {
+                val shipmentsResp = ApiClient.instance.getShipments("Bearer $token")
                 val ordersResp = ApiClient.instance.getSalesOrders("Bearer $token")
-                if (ordersResp.isSuccessful && ordersResp.body() != null) {
-                    val ordersList = ordersResp.body()!!
-                    activeShipmentsList = ordersList.filter {
-                        !it.status.equals("Delivered", true) &&
-                        !it.status.equals("Picked Up / Returned", true) &&
-                        !it.status.equals("Completed", true) &&
-                        !it.status.equals("Cancelled", true)
-                    }.map { order ->
-                        Shipment(
-                            id = order.id,
-                            orderId = order.id,
-                            type = if (order.orderType == "rental") "Rental Delivery" else "Sales Delivery",
-                            driverName = "Unassigned Dispatcher",
-                            dispatchDate = order.deliveryDate,
-                            status = order.status,
-                            destination = order.deliveryAddress.ifEmpty { "Sacramento Warehouse" },
-                            notes = "Jobsite Contact: ${order.customerName}",
-                            deliveredItems = order.items
-                        )
-                    }.toMutableList()
 
-                    completedShipmentsList = ordersList.filter {
-                        it.status.equals("Delivered", true) ||
-                        it.status.equals("Picked Up / Returned", true) ||
-                        it.status.equals("Completed", true)
-                    }.map { order ->
-                        Shipment(
-                            id = order.id,
-                            orderId = order.id,
-                            type = if (order.orderType == "rental") "Rental Delivery" else "Sales Delivery",
-                            driverName = "Unassigned Dispatcher",
-                            dispatchDate = order.deliveryDate,
-                            status = order.status,
-                            destination = order.deliveryAddress.ifEmpty { "Sacramento Warehouse" },
-                            notes = "Jobsite Contact: ${order.customerName}",
-                            deliveredItems = order.items
-                        )
-                    }.toMutableList()
+                val rawShipments = if (shipmentsResp.isSuccessful && shipmentsResp.body() != null) shipmentsResp.body()!! else emptyList()
+                val rawOrders = if (ordersResp.isSuccessful && ordersResp.body() != null) ordersResp.body()!! else emptyList()
 
-                    binding.tvActiveDeliveriesHeader.text = "🚚 Active Dispatches & Deliveries (${activeShipmentsList.size})"
-                    binding.tvCompletedDeliveriesHeader.text = "✅ Completed Dispatches (${completedShipmentsList.size})"
+                val mergedShipmentsMap = mutableMapOf<String, Shipment>()
 
-                    setupActiveAdapter()
-                    setupCompletedAdapter()
+                // 1. Convert all orders into baseline Shipment dispatches
+                for (order in rawOrders) {
+                    val dispatchType = if (order.orderType.equals("rental", ignoreCase = true)) "Rental Delivery" else "Sales Delivery"
+                    val isTaxable = order.tax > 0 || order.isTaxable
+                    val baseShipment = Shipment(
+                        id = order.id,
+                        orderId = order.id,
+                        type = dispatchType,
+                        driverName = "Unassigned Dispatcher",
+                        dispatchDate = order.deliveryDate.ifEmpty { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) },
+                        status = order.status.ifEmpty { "Scheduled" },
+                        destination = order.deliveryAddress.ifEmpty { "Sacramento Warehouse" },
+                        notes = "Jobsite Contact: ${order.customerName}",
+                        deliveredItems = order.items,
+                        isTaxable = isTaxable,
+                        discountAmount = order.discountAmount,
+                        overrideTotal = order.overrideTotal
+                    )
+                    mergedShipmentsMap[order.id] = baseShipment
                 }
+
+                // 2. Merge driver name, ETA, notes, and photos from shipments table
+                for (shp in rawShipments) {
+                    val key = (shp.orderId ?: "").ifEmpty { shp.id ?: "" }
+                    if (key.isNotEmpty()) {
+                        val existing = mergedShipmentsMap[key]
+                        if (existing != null) {
+                            mergedShipmentsMap[key] = existing.copy(
+                                driverName = (shp.driverName ?: "").ifEmpty { existing.driverName },
+                                dispatchDate = (shp.dispatchDate ?: "").ifEmpty { existing.dispatchDate },
+                                status = if (!shp.status.isNullOrEmpty()) shp.status else existing.status,
+                                destination = (shp.destination ?: "").ifEmpty { existing.destination },
+                                notes = (shp.notes ?: "").ifEmpty { existing.notes },
+                                eta = shp.eta.orEmpty(),
+                                deliveryPhotos = shp.deliveryPhotos,
+                                deliveredItems = if (!shp.deliveredItems.isNullOrEmpty()) shp.deliveredItems else existing.deliveredItems
+                            )
+                        } else {
+                            mergedShipmentsMap[shp.id ?: "SHP-${System.currentTimeMillis()}"] = shp
+                        }
+                    }
+                }
+
+                val allMerged = mergedShipmentsMap.values.toList()
+
+                activeShipmentsList = allMerged.filter {
+                    val status = (it.status ?: "").trim()
+                    !status.equals("Delivered", ignoreCase = true) &&
+                    !status.equals("Picked Up / Returned", ignoreCase = true) &&
+                    !status.equals("Completed", ignoreCase = true) &&
+                    !status.equals("Cancelled", ignoreCase = true)
+                }.toMutableList()
+
+                completedShipmentsList = allMerged.filter {
+                    val status = (it.status ?: "").trim()
+                    status.equals("Delivered", ignoreCase = true) ||
+                    status.equals("Picked Up / Returned", ignoreCase = true) ||
+                    status.equals("Completed", ignoreCase = true)
+                }.toMutableList()
+
+                binding.tvActiveDeliveriesHeader.text = "🚚 Active Dispatches & Deliveries (${activeShipmentsList.size})"
+                binding.tvCompletedDeliveriesHeader.text = "✅ Completed Dispatches (${completedShipmentsList.size})"
+
+                setupActiveAdapter()
+                setupCompletedAdapter()
+
             } catch (e: Exception) {
-                // Ignore fallback error
+                val errMsg = e.message.orEmpty().ifEmpty { "Unable to load dispatches" }
+                Toast.makeText(context, "Dispatches: $errMsg", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -280,23 +270,36 @@ class DeliveriesFragment : Fragment() {
             val calculated = Math.max(0.0, subtotal + deliveryFee + tax - discount)
             val finalTotal = if (overridePrice != null && overridePrice > 0) overridePrice else calculated
 
+            val taxLabel = if (isTaxable) "Tax (8%): $" + String.format(Locale.US, "%.2f", tax) else "Tax: $0.00 (TAX EXEMPT)"
+
             dialogBinding.tvAdjustedTotalPreview.text = "💰 Adjusted Total: $" + String.format(Locale.US, "%.2f", finalTotal) +
                 " (Subtotal: $" + String.format(Locale.US, "%.2f", subtotal) +
-                " + Tax: $" + String.format(Locale.US, "%.2f", tax) +
-                " - Disc: $" + String.format(Locale.US, "%.2f", discount) + ")"
+                " + Delivery Fee: $" + String.format(Locale.US, "%.2f", deliveryFee) +
+                " + $taxLabel - Disc: $" + String.format(Locale.US, "%.2f", discount) + ")"
 
             return finalTotal
         }
 
-        // Fetch Customer Contact Info safely
+        // Fetch Customer & Order details safely
         lifecycleScope.launch {
             try {
                 val salesResponse = ApiClient.instance.getSalesOrders("Bearer $token")
+                val custResponse = ApiClient.instance.getCustomers("Bearer $token")
+
+                val customersList = if (custResponse.isSuccessful && custResponse.body() != null) custResponse.body()!! else emptyList()
+
                 if (salesResponse.isSuccessful && salesResponse.body() != null) {
                     val matchingOrder = salesResponse.body()!!.find {
                         it.id.equals(targetOrderId, ignoreCase = true) || it.id.equals(shipId, ignoreCase = true)
                     }
                     if (matchingOrder != null) {
+                        val matchingCustomer = customersList.find {
+                            it.id == matchingOrder.customerId || it.email.equals(matchingOrder.customerEmail, true)
+                        }
+
+                        val isCustomerTaxable = matchingCustomer?.isTaxable ?: (matchingOrder.tax > 0 || matchingOrder.isTaxable)
+                        dialogBinding.cbIsTaxable.isChecked = isCustomerTaxable
+
                         val companyStr = if (!matchingOrder.customerCompany.isNullOrEmpty()) " (${matchingOrder.customerCompany})" else ""
                         val custName = matchingOrder.customerName.ifEmpty { "Direct Client" }
                         val custPhone = matchingOrder.customerPhone.ifEmpty { "(279) 261-3890" }
@@ -356,7 +359,7 @@ class DeliveriesFragment : Fragment() {
                 calculateAdjustedTotal()
 
             } catch (e: Exception) {
-                // Fallback default
+                // Fallback
             }
         }
 
